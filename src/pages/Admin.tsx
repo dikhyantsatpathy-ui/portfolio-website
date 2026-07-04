@@ -306,10 +306,35 @@ export default function Admin() {
               </div>
               
               <div className="space-y-4 md:col-span-2 mt-4 pt-4 border-t border-white/5">
-                <h3 className="text-md font-semibold text-white mb-2">Interests</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-md font-semibold text-white">Interests</h3>
+                  <button 
+                    onClick={() => {
+                      const newInterests = [...(profile.interests || [])];
+                      if (newInterests.length < 4) {
+                        newInterests.push({ id: Date.now().toString(), title: '', description: '', icon: 'book' });
+                        handleUpdateProfile({interests: newInterests});
+                      } else {
+                        alert("You can have up to 4 interests.");
+                      }
+                    }}
+                    className="flex items-center gap-1 text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded hover:bg-indigo-500/30 transition-colors"
+                  >
+                    <Plus size={14} /> Add Interest
+                  </button>
+                </div>
                 <p className="text-sm text-gray-500 mb-4">You can have up to 4 interests. Edit them below:</p>
                 {profile.interests?.map((interest, idx) => (
-                  <div key={interest.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#0a0a0c] p-4 rounded-xl border border-white/5">
+                  <div key={interest.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#0a0a0c] p-4 rounded-xl border border-white/5 relative">
+                    <button 
+                      onClick={() => {
+                        const newInterests = profile.interests?.filter(i => i.id !== interest.id);
+                        handleUpdateProfile({interests: newInterests});
+                      }}
+                      className="absolute top-2 right-2 text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">Icon (gamepad, shield, book, code)</label>
                       <input type="text" value={interest.icon} onChange={e => {
