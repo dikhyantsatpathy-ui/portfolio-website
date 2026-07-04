@@ -1,0 +1,6 @@
+{
+  "name": "Dikhyant's Portfolio",
+  "description": "Interactive personal portfolio with an admin dashboard for content management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Section": {
+      "title": "Section",
+      "description": "A dynamic portfolio section",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["projects", "achievements", "certificates", "custom"] },
+        "items": { "type": "array" },
+        "order": { "type": "number" },
+        "visible": { "type": "boolean" },
+        "updatedAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["title", "type", "order", "ownerId"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "bio": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Stores user profiles"
+    },
+    "/sections/{sectionId}": {
+      "schema": { "$ref": "#/entities/Section" },
+      "description": "Stores dynamic sections for a profile"
+    }
+  }
+}
