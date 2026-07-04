@@ -147,13 +147,13 @@ export const Terminal = ({ profile, visitorInfo }: TerminalProps) => {
       </div>
       <div ref={scrollContainerRef} className="p-4 h-64 overflow-y-auto space-y-2 text-gray-300 scroll-smooth">
         {history.map((line, i) => (
-          <div key={i} className={line.type === 'input' ? 'flex gap-2 text-indigo-400' : 'text-gray-300'}>
-            {line.type === 'input' && <span>guest@portfolio:~$</span>}
+          <div key={i} className={line.type === 'input' ? 'flex text-indigo-400' : 'text-gray-300'}>
+            {line.type === 'input' && <span className="mr-2">{'guest@portfolio:~$ '}</span>}
             <div>{line.content}</div>
           </div>
         ))}
-        <div className="flex gap-2 text-indigo-400">
-          <span>guest@portfolio:~$</span>
+        <div className="flex text-indigo-400">
+          <span className="mr-2">{'guest@portfolio:~$ '}</span>
           <div className="relative flex-1 flex items-center">
             <input
               ref={inputRef}

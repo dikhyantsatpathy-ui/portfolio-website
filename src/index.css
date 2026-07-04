@@ -19,7 +19,4 @@
 }
 
 @media (min-width: 768px) {
-  .portfolio-container, .portfolio-container * {
-    cursor: none !important;
-  }
 }

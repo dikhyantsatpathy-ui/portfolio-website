@@ -57,6 +57,7 @@ export default function Admin() {
             { id: '1', title: 'Gaming & Cinematics', icon: 'gamepad', description: 'Lethal Company, Bigfoot, and Schedule 1. I also produce cinematic montages for games like God of War (2018) and Ghost of Tsushima.' },
             { id: '2', title: 'Cybersecurity', icon: 'shield', description: 'Actively exploring cybersecurity concepts using Kali Linux via VirtualBox, alongside hardware optimization for my HP Omen 16.' },
             { id: '3', title: 'Literature', icon: 'book', description: 'An avid bookworm who enjoys diving into novels, short stories, and rich narratives during my downtime.' },
+            { id: '4', title: 'Coding & Development', icon: 'code', description: 'Building full-stack web applications, exploring new frameworks, and continuously learning software engineering principles.' },
           ],
           email: "dikhyantsatpathy@gmail.com",
           github: "@dikhyant",
@@ -306,7 +307,7 @@ export default function Admin() {
               
               <div className="space-y-4 md:col-span-2 mt-4 pt-4 border-t border-white/5">
                 <h3 className="text-md font-semibold text-white mb-2">Interests</h3>
-                <p className="text-sm text-gray-500 mb-4">You can have up to 3 interests. Edit them below:</p>
+                <p className="text-sm text-gray-500 mb-4">You can have up to 4 interests. Edit them below:</p>
                 {profile.interests?.map((interest, idx) => (
                   <div key={interest.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#0a0a0c] p-4 rounded-xl border border-white/5">
                     <div>

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, doc, getDoc, addDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, getDoc, addDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { Section, Profile } from "../types";
 import { MapPin, GraduationCap, Gamepad2, BookOpen, Shield, Code2, Link as LinkIcon, ShieldAlert, ArrowUpRight, Copy, Globe, Github, Twitter, Linkedin, Layers, Terminal as TerminalIcon, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion, useScroll, useTransform, AnimatePresence } from "motion/react";
 import { Chatbot } from "../components/Chatbot";
-import { CustomCursor } from "../components/CustomCursor";
 import { Terminal } from "../components/Terminal";
 import { TiltCard } from "../components/TiltCard";
 import { MagneticButton } from "../components/MagneticButton";
@@ -69,11 +68,11 @@ export default function Portfolio() {
     // Check visitor IP
     const checkVisitor = async () => {
       try {
-        const res = await fetch("https://ipapi.co/json/");
-        if (!res.ok) throw new Error("ipapi failed");
-        const data = await res.json();
-        const ip = data.ip;
-        
+        // First get IPv4
+        const ipRes = await fetch("https://api4.ipify.org?format=json");
+        if (!ipRes.ok) throw new Error("ipify failed");
+        const { ip } = await ipRes.json();
+
         if (ip && ip !== 'Unknown IP') {
           const cleanIp = ip.replace(/\//g, '-');
           const blockedDoc = await getDoc(doc(db, "blocked_ips", cleanIp));
@@ -83,14 +82,23 @@ export default function Portfolio() {
           }
           
           let finalLocation = "Unknown Location";
-          if (data.city) {
-            finalLocation = `${data.city}, ${data.country_name}`;
+          try {
+            // Get location for this IP
+            const locRes = await fetch(`https://ipapi.co/${ip}/json/`);
+            if (locRes.ok) {
+              const data = await locRes.json();
+              if (data.city) {
+                finalLocation = `${data.city}, ${data.country_name}`;
+              }
+            }
+          } catch (e) {
+            // Silent catch to prevent console noise from ad-blockers
           }
+          
           setVisitorInfo({ ip, location: finalLocation });
           
           // Log visitor to db
           try {
-            const { setDoc, serverTimestamp } = await import('firebase/firestore');
             await setDoc(doc(db, "visitors", cleanIp), {
               ip: ip,
               location: finalLocation,
@@ -102,24 +110,8 @@ export default function Portfolio() {
           }
         }
       } catch (err) {
-        // Fallback if ipapi is blocked
-        try {
-          const res = await fetch("https://api.ipify.org?format=json");
-          const { ip } = await res.json();
-          if (ip) {
-            const cleanIp = ip.replace(/\//g, '-');
-            setVisitorInfo({ ip, location: "Unknown Location" });
-            const { setDoc, serverTimestamp } = await import('firebase/firestore');
-            await setDoc(doc(db, "visitors", cleanIp), {
-              ip: ip,
-              location: "Unknown Location",
-              lastVisited: new Date().toISOString(),
-              timestamp: serverTimestamp()
-            }, { merge: true });
-          }
-        } catch (e) {
-          // Silently fail if all visitor info cannot be fetched
-        }
+        // Silently fail if ipify fails
+        console.warn('Visitor IP check failed', err);
       }
     };
     checkVisitor();
@@ -228,9 +220,6 @@ export default function Portfolio() {
         {/* System HUD Overlay */}
         <SystemHUD />
 
-        {/* Custom Cursor Component */}
-        <CustomCursor />
-
         {/* Reactive Background Gradients */}
         {!hackerMode && (
           <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden flex items-center justify-center">
@@ -318,7 +307,7 @@ export default function Portfolio() {
             viewport={{ once: true, margin: "-50px" }}
             className="pt-12"
           >
-            <div className="flex items-center gap-3 justify-center sm:justify-start">
+            <div className="flex items-center gap-3 justify-center sm:justify-start mb-8">
               <TerminalIcon className="w-6 h-6 text-indigo-400" />
               <h2 className="text-2xl font-bold text-white tracking-tight">
                 <ScrambleText text="Interactive Terminal" />
@@ -334,7 +323,7 @@ export default function Portfolio() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.8 }}
-              className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${Math.min(profile.interests.length, 3)} gap-6`}
+              className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6`}
             >
               {profile.interests.map((interest, idx) => {
                 const colors = [
@@ -527,7 +516,6 @@ export default function Portfolio() {
                   const originalText = btn.innerText;
                   btn.innerText = 'Sending...';
                   try {
-                    const { serverTimestamp } = await import('firebase/firestore');
                     await addDoc(collection(db, "messages"), {
                       name,
                       email,

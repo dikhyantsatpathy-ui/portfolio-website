@@ -1,24 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel } from 'firebase/firestore';
 import appletFirebaseConfig from '../../firebase-applet-config.json';
 
-const customConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
+// Suppress internal Firestore warnings (like WebChannelConnection errors)
+setLogLevel('error');
 
-const hasCustomConfig = !!customConfig.apiKey && !!customConfig.projectId;
-const firebaseConfig = hasCustomConfig ? customConfig : appletFirebaseConfig;
+const app = initializeApp(appletFirebaseConfig);
 
-const app = initializeApp(firebaseConfig);
-
-// If custom project is used, default DB is likely (default) so no second arg needed.
-export const db = getFirestore(app, hasCustomConfig ? undefined : appletFirebaseConfig.firestoreDatabaseId);
+// Always try to use the databaseId from the applet config if it exists,
+// since that's the one we provisioned the schema and rules for.
+export const db = getFirestore(app, appletFirebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
