@@ -92,7 +92,7 @@ export default function Portfolio() {
               }
             }
           } catch (e) {
-            // Silent catch to prevent console noise from ad-blockers
+            // Silently fail location fetch
           }
           
           setVisitorInfo({ ip, location: finalLocation });
@@ -106,12 +106,11 @@ export default function Portfolio() {
               timestamp: serverTimestamp()
             }, { merge: true });
           } catch (dbErr) {
-            console.warn('Visitor log warning:', dbErr);
+            // Silently fail db log
           }
         }
       } catch (err) {
         // Silently fail if ipify fails
-        console.warn('Visitor IP check failed', err);
       }
     };
     checkVisitor();
