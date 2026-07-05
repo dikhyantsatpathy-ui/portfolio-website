@@ -522,6 +522,24 @@ export default function Portfolio() {
                       createdAt: serverTimestamp(),
                       read: false
                     });
+
+                    // Send email notification via Resend
+                    try {
+                      await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          name,
+                          email,
+                          message,
+                          toEmail: profile.email
+                        }),
+                      });
+                    } catch (emailError) {
+                      console.warn("Failed to send email notification", emailError);
+                    }
                     
                     btn.innerText = 'Message Sent!';
                     (e.target as HTMLFormElement).reset();
