@@ -13,7 +13,6 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
-    "@vercel/speed-insights": "^2.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "d3-force": "^3.0.0",
@@ -27,7 +26,6 @@
     "react-force-graph-2d": "^1.29.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.1",
-    "resend": "^6.17.1",
     "tailwind-merge": "^3.6.0",
     "vite": "^6.2.3"
   },
