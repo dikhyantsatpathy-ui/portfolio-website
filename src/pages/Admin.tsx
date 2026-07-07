@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from "../lib/firebase";
-import { signInWithRedirect, onAuthStateChanged, User, signOut } from "firebase/auth";
+import { signInWithPopup, onAuthStateChanged, User, signOut } from "firebase/auth";
 import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { Section, SectionType, Profile } from "../types";
 import { Plus, Trash2, LogOut, Loader2, ArrowLeft, GripVertical, AlertTriangle } from "lucide-react";
@@ -108,7 +108,7 @@ export default function Admin() {
 
   const handleLogin = async () => {
     try {
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error(error);
       if (error?.code === 'auth/unauthorized-domain') {
