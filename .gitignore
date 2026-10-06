@@ -1,8 +1,28 @@
+# deps / build
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+
+# agent tooling — local only, not part of the site
+.agents/
+
+# scratch / one-off debug scripts
+test-*.js
+fixProfile.js
+
+# env
 .env*
 !.env.example
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
