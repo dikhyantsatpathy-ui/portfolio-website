@@ -7,6 +7,12 @@
       "skillPath": "skills/gsap-react/SKILL.md",
       "computedHash": "255206fb6a4a079ad73b4a12e7c63197dc451a8549c7ac4e852b50ff74ef3bd6"
     },
+    "react-doctor": {
+      "source": "millionco/react-doctor",
+      "sourceType": "github",
+      "skillPath": "skills/react-doctor/SKILL.md",
+      "computedHash": "92a49b8e7813430666f2496f9823a76e7638c0d510dff94ad121da90849e5496"
+    },
     "react-patterns": {
       "source": "affaan-m/ecc",
       "sourceType": "github",

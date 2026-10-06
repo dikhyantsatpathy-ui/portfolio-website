@@ -118,10 +118,15 @@
     overflow-x: hidden;
   }
 
+  /* Headings take the display face, but only as an INHERITED default. An
+     earlier version set `font-family: var(--font-display)` outright, which
+     silently overrode the monospace and sans headings on the alternate design
+     routes — every one of them rendered in the same serif regardless of what
+     they asked for. Inheriting lets a scoped parent font win. */
   h1,
   h2,
   h3 {
-    font-family: var(--font-display);
+    font-family: inherit;
     font-weight: 400;
     /* Display serif at large sizes needs negative tracking to not feel loose. */
     letter-spacing: -0.022em;
