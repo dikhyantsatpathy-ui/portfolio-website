@@ -83,11 +83,23 @@ export function Reveal({
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-15% 0px -15% 0px" });
 
+  // Under reduced motion the content is rendered already visible with no
+  // transition at all. The global CSS `prefers-reduced-motion` override cannot
+  // reach this, because Motion drives these values from JavaScript rather than
+  // from a CSS transition — so it has to be handled here.
+  if (reduced) {
+    return (
+      <div ref={ref} className={className}>
+        <Tag>{children}</Tag>
+      </div>
+    );
+  }
+
   return (
     <motion.div
       ref={ref}
       className={className}
-      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 22 }}
+      initial={{ opacity: 0, y: 22 }}
       animate={inView ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.75, delay, ease: [0.16, 1, 0.3, 1] }}
     >

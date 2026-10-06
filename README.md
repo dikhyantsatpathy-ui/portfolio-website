@@ -2,8 +2,8 @@
 
 Personal site for **Dikhyant Satapathy** — software engineer.
 
-A scroll-driven single page: a WebGL starfield and a modelled gyroscope that
-descends through the viewport as you scroll, over a CSS 3D corridor.
+A scroll-driven single page: a 3D mech rendered as ASCII text walks the viewport,
+over a CSS 3D corridor, with a pinned horizontal project track.
 
 ## Stack
 
@@ -12,7 +12,7 @@ descends through the viewport as you scroll, over a CSS 3D corridor.
 | Build | Vite 6 |
 | UI | React 19, TypeScript (strict) |
 | Styling | Tailwind CSS v4 (`@theme` in `src/index.css`, no config file) |
-| 3D | Three.js (lazy-loaded, one WebGL context) |
+| The mech | Software rasteriser in `src/components/AsciiMech.tsx` — no WebGL |
 | Scroll | Lenis + GSAP ScrollTrigger (`useGSAP`) |
 | Content | Firestore, with a static fallback in `src/data/content.ts` |
 | Deploy | Vercel (frontend + `api/`) · Firebase (auth, Firestore, rules) |
@@ -30,18 +30,28 @@ npm run lint                 # tsc --noEmit
 npm run build                # production build to dist/
 ```
 
+## The ASCII mech
+
+There is no WebGL and no Three.js. The mech is real 3D geometry rasterised in
+software and printed as characters:
+
+1. The mech is built from boxes into triangles with flat normals.
+2. Each frame: transform, project with a perspective divide, rasterise into a
+   z-buffer.
+3. Each covered cell stores shaded luminance.
+4. Luminance picks a glyph from a density ramp — so shading *is* character
+   density, and the mid-tones fall out of geometry and light.
+
+Doing it this way is what gives real foreshortening and self-occlusion, and it
+removed a 536 kB dependency, a GPU context and a shader compile.
+
 ## How it fits together
 
-- **Content** lives in Firestore and is edited through `/admin`. `src/data/content.ts`
-  holds a static copy used for first paint and as a fallback, so the page still
-  renders if Firestore is slow, empty, or blocked by rules. Firestore wins once it
-  responds.
-- **The 3D scene** (`src/components/HeroMachine.tsx`) owns a single `WebGLRenderer`.
-  The starfield and the gyro share it — a second renderer would mean a second
-  full-viewport render target.
-- **Scroll drives everything.** The page is ~6,900px tall specifically so the
-  scene has room to be a journey; scroll progress maps to poses, and scroll
-  *velocity* adds to the starfield's forward speed.
+- **Content** lives in Firestore and is edited through `/admin`.
+  `src/data/content.ts` holds a static copy used for first paint and as a
+  fallback, so the page still renders if Firestore is slow, empty, or blocked.
+- **Scroll drives the framing.** Page height *is* the length of the journey
+  (~6,900px); scroll progress drives the mech's transform.
 - **Secrets** stay server-side in `api/`. Nothing in `src/` may hold a secret —
   `VITE_*` values are public by definition.
 
@@ -49,33 +59,43 @@ npm run build                # production build to dist/
 
 Verified against WCAG 2.2 AA, not assumed:
 
-- All text meets 4.5:1 (or 3:1 for large); the decorative token `--color-bone-700`
-  is 2.71:1 and is never used for text.
+- All text meets 4.5:1 (or 3:1 for large); `--color-bone-700` is 2.9:1 and is
+  never used for text.
 - Interactive targets ≥24×24 (SC 2.5.8).
 - Form fields have real `<label>` elements — a placeholder is not a label.
-- Visible `focus-visible` rings, a skip link as the first tab stop, and a properly
-  labelled modal that closes on Escape.
-- `prefers-reduced-motion` disables Lenis, pinning, and the animation loop; the
-  3D scene renders a single static frame.
+- Visible `focus-visible` rings, a skip link as the first tab stop, and a
+  properly labelled modal that closes on Escape.
+- `prefers-reduced-motion` disables Lenis, pinning, the hero entrance and the
+  mech loop, which then renders a single static frame. JS-driven animation is
+  gated per component, because the CSS override cannot reach it.
 
 ## Performance
 
-60fps idle and while scrolling at 1024×640, 1440×900 and 1920×1080. Kept there by:
-capping pixel ratio (1.5 for the 3D scene), a 32fps frame budget, one draw call
-for the whole starfield, `contain` on the composited layers, pausing offscreen
-scenes, and avoiding `filter: blur()` / `mix-blend-mode` on full-viewport
-elements.
+61fps rAF, no canvas on the page at all. The text grid is written as one
+`textContent` assignment, throttled to ~20fps. Main bundle is ~190 kB gzip.
 
 ## Easter eggs
 
 | Trigger | Result |
 | --- | --- |
-| Konami code | Overdrive — magenta palette, faster spin, red-hot core |
-| Click anywhere | Shockwave + camera kick; counter appears in the footer |
-| Drag | Spin the machine, with inertia |
+| Konami code | Overdrive — signal red, hotter glow |
+| Click anywhere | Shockwave ring; counter appears in the footer |
 | `sabotage()` in the console, or press `` ` `` | Command palette |
 | Type `hire` | Overdrive burst |
-| Alt-click the `DS/` monogram | Blueprint — warm amber schematic mode |
+| Alt-click the `DS/` monogram | Blueprint — inverted to dark ink on paper |
+
+## Deploying
+
+The repo is not yet linked to a Vercel project, so `vercel` will prompt for
+login on first use:
+
+```bash
+vercel link      # one-time: pick or create the project
+vercel --prod
+```
+
+`vercel.json` excludes `/api/` from the SPA rewrite so the serverless functions
+stay reachable.
 
 ## Agent tooling
 
