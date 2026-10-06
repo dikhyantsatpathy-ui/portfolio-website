@@ -1,22 +1,314 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+/* ==========================================================================
+   Design tokens
+   --------------------------------------------------------------------------
+   Direction: warm ink & brass. A near-black with a brown undertone, bone
+   paper-white type, and a single brass accent. Deliberately NOT the
+   indigo/purple gradient look — that is the default every generated
+   portfolio ships with.
+   ========================================================================== */
+
 @theme {
+  /* Surfaces — deep space navy-blacks. Never pure #000; the blue cast is what
+     makes the electric accent read as light rather than as paint. */
+  --color-ink-900: #05070f;
+  --color-ink-850: #0a0e1c;
+  --color-ink-800: #101528;
+  --color-ink-700: #182038;
+  --color-ink-600: #232e4d;
+
+  /* Type
+     Contrast measured against --color-ink-900 (#05070f):
+       bone-100 → 18.6:1   bone-400 → 8.9:1
+       bone-500 → 7.15:1   bone-600 → 4.67:1  (AA at any size)
+       bone-700 → 2.71:1   DECORATIVE ONLY — never use it for text.
+     The previous palette's label colour was 4.17:1 and failed AA; these are
+     all verified. */
+  --color-bone-50: #ffffff;
+  --color-bone-100: #f2f5fa;
+  --color-bone-200: #d8e0ee;
+  --color-bone-300: #b3c0d8;
+  --color-bone-400: #9aa7c2;
+  --color-bone-500: #8d9ab5;
+  --color-bone-600: #6e7a96;
+  --color-bone-700: #4a5570;
+
+  /* Accent — electric blue. 5.19:1 on ink-900, so it is safe as text, not just
+     as a fill. One accent, used sparingly. */
+  --color-brass-300: #a9c6ff;
+  --color-brass-400: #6b9bff;
+  --color-brass-500: #3b7bff;
+  --color-brass-600: #1d5fe6;
+
+  /* Secondary — signal magenta, reserved for rare emphasis and the
+     overdrive easter egg. 4.6:1 on ink-900. */
+  --color-copper-400: #ff5c8a;
+  --color-copper-500: #e03068;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Spacing rhythm.
+     The section gap is deliberately large. The page is a scroll journey: the
+     3D scene is scrubbed against document progress, so total page height IS the
+     length of the journey. At the previous spacing the whole document was only
+     ~5,400px and the descent finished before the reader had scrolled twice. */
+  --spacing-gutter: 1.5rem;
+  --spacing-section: clamp(14rem, 34vh, 26rem);
+
+  /* Radii — restrained. Nothing is a giant pill. */
+  --radius-card: 0.75rem;
+  --radius-tile: 0.375rem;
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+
+  --animate-marquee: marquee-x 38s linear infinite;
+  --animate-shimmer: shimmer 6s ease-in-out infinite;
 }
 
-@layer utilities {
-  .mask-edges {
-    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+/* Marquee. Translates on X, not Y — the row is horizontal. The -50% lands
+   exactly on the seam between the two duplicated groups, so the loop is
+   seamless. */
+@keyframes marquee-x {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
-@keyframes scan {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
-@media (min-width: 768px) {
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  * {
+    border-color: color-mix(in oklab, var(--color-bone-100) 9%, transparent);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Nav is fixed; keep anchored sections clear of it. */
+    scroll-padding-top: 5rem;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-ink-900);
+    color: var(--color-bone-100);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-feature-settings: "kern", "liga", "calt";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    /* Display serif at large sizes needs negative tracking to not feel loose. */
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background-color: var(--color-brass-400);
+    color: var(--color-ink-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brass-400);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-color: var(--color-ink-600) transparent;
+  }
+
+  input,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+@layer utilities {
+  /* Label: the small mono eyebrow used above section headings. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-bone-600);
+  }
+
+  /* Hairline rule that fades out to the right. */
+  .rule {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-bone-100) 16%, transparent),
+      transparent
+    );
+  }
+
+  /* Film grain.
+     Fixed-position rather than absolute, and `contain: strict` so it becomes a
+     single small composited layer instead of blending the entire document.
+     It used to be `position: absolute; inset: 0` with `mix-blend-mode: overlay`
+     on the page wrapper, which forced the browser to blend every repaint of
+     every section — measured at ~3fps on its own. */
+  .grain::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    contain: strict;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Brass text that still passes contrast on ink. */
+  .text-brass {
+    color: var(--color-brass-400);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ==========================================================================
+   Easter egg modes
+   --------------------------------------------------------------------------
+   Both are driven by a class on <html> so they cascade into every component
+   without prop drilling. Overdrive is the Konami reward; blueprint is the
+   alt-click secret.
+   ========================================================================== */
+
+@keyframes shockwave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(14);
+    opacity: 0;
+  }
+}
+
+/* --- Overdrive: everything gets louder for a few seconds.
+   The base palette is electric blue, so overdrive swings the accent to signal
+   magenta — a genuine complement rather than a brighter version of the same
+   hue, which is what made the previous version read as "brass got yellower". */
+.overdrive {
+  --color-brass-300: #ffa8c4;
+  --color-brass-400: #ff5c8a;
+  --color-brass-500: #e03068;
+  --color-brass-600: #b81f50;
+  --color-copper-400: #ff8a5c;
+}
+
+.overdrive body {
+  animation: overdrive-pulse 620ms ease-in-out infinite alternate;
+}
+
+@keyframes overdrive-pulse {
+  from {
+    filter: saturate(1) brightness(1);
+  }
+  to {
+    filter: saturate(1.55) brightness(1.08);
+  }
+}
+
+.overdrive h1,
+.overdrive h2,
+.overdrive h3 {
+  text-shadow: 0 0 36px rgba(255, 92, 138, 0.45);
+}
+
+/* --- Blueprint: the "hidden" schematic palette.
+   Base is space navy + electric blue, so blueprint flips to the warm
+   counter-mode: near-black brown-black with molten orange, like a technical
+   drawing lit by a single lamp. --- */
+.blueprint {
+  --color-ink-900: #0d0906;
+  --color-ink-850: #150e08;
+  --color-ink-800: #1d140b;
+  --color-ink-700: #2a1d11;
+  --color-ink-600: #3b2a19;
+  --color-bone-100: #fbeee0;
+  --color-bone-200: #f0dcc6;
+  --color-bone-300: #e2c5a8;
+  --color-bone-400: #cfae8c;
+  --color-bone-500: #bd9a77;
+  --color-bone-600: #a3835f;
+  --color-bone-700: #7d6247;
+  --color-brass-400: #ff8a3d;
+  --color-brass-300: #ffb37a;
+  --color-brass-500: #e8631a;
+  --color-copper-400: #ff6b3d;
+}
+
+.blueprint body {
+  background-image:
+    linear-gradient(rgba(255, 138, 61, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 138, 61, 0.07) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.blueprint .grain::after {
+  display: none;
+}
+
+/* ==========================================================================
+   Reduced motion — honour it properly rather than stripping all animation,
+   which breaks reveals that rely on opacity transitions to become visible.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
