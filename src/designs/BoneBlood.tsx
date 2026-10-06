@@ -24,6 +24,8 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 
 import { AsciiFigure } from "../lib/AsciiFigure";
+import { Contact, Interests, Footer } from "./Sections";
+import PinnedWork from "../components/PinnedWork";
 import type { Profile, SectionItem } from "../types";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -31,6 +33,8 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
 type Props = {
   profile: Profile;
   projects: SectionItem[];
+  live: boolean;
+  zaps: number;
 };
 
 /* ------------------------------------------------------------------ *
@@ -58,7 +62,7 @@ function Line({ children, delay = 0 }: { children: React.ReactNode; delay?: numb
  * The page
  * ------------------------------------------------------------------ */
 
-export default function BoneBlood({ profile, projects }: Props) {
+export default function BoneBlood({ profile, projects, live, zaps }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const figWrap = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLHeadingElement>(null);
@@ -463,6 +467,19 @@ export default function BoneBlood({ profile, projects }: Props) {
       </section>
 
       {/* ---------- CONTACT ---------- */}
+      {/* ---------- INTERESTS ---------- */}
+      {profile.interests?.length ? (
+        <section className="relative z-10 px-[clamp(1.25rem,4vw,5rem)] pt-[clamp(4rem,12vh,9rem)]">
+          <h2
+            data-reveal
+            className="mb-[clamp(1.5rem,4vh,3rem)] font-mono text-[11px] uppercase tracking-[0.3em] text-[#c1121f]"
+          >
+            What I work on
+          </h2>
+          <Interests items={profile.interests} />
+        </section>
+      ) : null}
+
       <section
         id="contact"
         className="relative z-10 px-[clamp(1.25rem,4vw,5rem)] pt-[clamp(6rem,20vh,16rem)] pb-[clamp(3rem,8vh,6rem)]"
@@ -484,46 +501,21 @@ export default function BoneBlood({ profile, projects }: Props) {
           </a>
         </div>
 
+        {/* The real form. Writes through to the inbox via api/contact. */}
         <div
           data-reveal
-          className="mt-[clamp(3rem,9vh,7rem)] flex flex-wrap items-center gap-x-[clamp(1.5rem,3vw,3.5rem)] gap-y-4 border-t border-[#efece4]/12 pt-[clamp(1.5rem,4vh,3rem)] font-mono text-[11px] uppercase tracking-[0.2em]"
+          className="mt-[clamp(3rem,9vh,7rem)] border-t border-[#efece4]/12 pt-[clamp(2rem,6vh,4rem)]"
         >
-          <a
-            href={`mailto:${profile.email}`}
-            className="py-2 text-[#8b877d] transition-colors hover:text-[#c1121f]"
-          >
-            {profile.email}
-          </a>
-          {profile.github && (
-            <a
-              href={profile.github}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="py-2 text-[#8b877d] transition-colors hover:text-[#c1121f]"
-            >
-              GitHub
-            </a>
-          )}
-          {profile.linkedin && (
-            <a
-              href={profile.linkedin}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="py-2 text-[#8b877d] transition-colors hover:text-[#c1121f]"
-            >
-              LinkedIn
-            </a>
-          )}
+          <Contact
+            email={profile.email}
+            github={profile.github}
+            linkedin={profile.linkedin}
+          />
         </div>
       </section>
 
       {/* ---------- FOOTER ---------- */}
-      <footer className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-t border-[#efece4]/12 px-[clamp(1.25rem,4vw,5rem)] py-[clamp(1.5rem,4vh,3rem)] font-mono text-[10px] uppercase tracking-[0.22em] text-[#56534d]">
-        <span>
-          © {new Date().getFullYear()} {profile.name}
-        </span>
-        <span>Built to hold</span>
-      </footer>
+      <Footer name={profile.name} live={live} zaps={zaps} />
     </div>
   );
 }
