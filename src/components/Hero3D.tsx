@@ -1,15 +1,10 @@
-import { Suspense, lazy, useRef } from "react";
+import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import AsciiMech from "./AsciiMech";
 
 gsap.registerPlugin(ScrollTrigger);
-
-// Three.js is ~600 kB. Loading it eagerly would more than double the main
-// bundle and delay first paint for something decorative. Splitting it means the
-// headline, type and corridor paint immediately and the machine arrives a beat
-// later — which reads as the machine powering on rather than as a slow page.
-const HeroMachine = lazy(() => import("./HeroMachine"));
 
 /**
  * Hero: a 3D corridor the camera flies through.
@@ -54,19 +49,22 @@ export default function Hero() {
 
           // --- Entrance -------------------------------------------------
           // Not scroll-linked, so a real ease is correct here.
-          gsap
-            .timeline({ defaults: { ease: "power3.out" } })
-            .from(q(".hero-word--1"), { yPercent: 110, duration: 1.1 })
-            .from(
-              q(".hero-word--2"),
-              { yPercent: 110, duration: 1.1 },
-              "-=0.85"
-            )
-            .from(
-              q(".hero-meta"),
-              { opacity: 0, y: 20, duration: 0.7 },
-              "-=0.55"
-            );
+          //
+          // Skipped entirely under reduced motion. GSAP drives these values
+          // from JavaScript, so the global CSS `prefers-reduced-motion` rule
+          // cannot suppress them — leaving this in place meant the headline
+          // still slid up over a second for users who asked it not to move.
+          if (!reduce) {
+            gsap
+              .timeline({ defaults: { ease: "power3.out" } })
+              .from(q(".hero-word--1"), { yPercent: 110, duration: 1.1 })
+              .from(q(".hero-word--2"), { yPercent: 110, duration: 1.1 }, "-=0.85")
+              .from(
+                q(".hero-meta"),
+                { opacity: 0, y: 20, duration: 0.7 },
+                "-=0.55"
+              );
+          }
 
           if (reduce) return;
 
@@ -201,7 +199,7 @@ export default function Hero() {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 90% at 50% 8%, #16203c 0%, #0a0e1c 45%, #05070f 100%)",
+            "radial-gradient(120% 90% at 50% 8%, #17171b 0%, #0d0d10 45%, #08080a 100%)",
         }}
       />
 
@@ -243,7 +241,7 @@ export default function Hero() {
                 transformOrigin: p.origin,
                 transform: `${p.rot} translateZ(-320px)`,
                 backgroundImage:
-                  "repeating-linear-gradient(to right, rgba(59,123,255,0.20) 0px, rgba(59,123,255,0.20) 1px, transparent 1px, transparent 68px)",
+                  "repeating-linear-gradient(to right, rgba(245,147,0,0.16) 0px, rgba(245,147,0,0.16) 1px, transparent 1px, transparent 68px)",
               }}
             />
           ))}
@@ -276,7 +274,7 @@ export default function Hero() {
             className="absolute left-1/2 top-[62%] h-[38vh] w-[78vw] -translate-x-1/2 -translate-y-1/2"
             style={{
               background:
-                "radial-gradient(ellipse at center, rgba(59,123,255,0.26) 0%, rgba(29,95,230,0.10) 38%, transparent 68%)",
+                "radial-gradient(ellipse at center, rgba(245,147,0,0.18) 0%, rgba(196,116,0,0.07) 38%, transparent 68%)",
             }}
           />
         </div>
@@ -288,25 +286,27 @@ export default function Hero() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 80% at 50% 45%, transparent 30%, rgba(5,7,15,0.75) 100%)",
+            "radial-gradient(120% 80% at 50% 45%, transparent 30%, rgba(8,8,10,0.78) 100%)",
         }}
       />
 
       {/* ---- The machine. Sits behind the type, in front of the corridor.
            It reads its own scroll progress internally, so it keeps travelling
            and re-framing as the page moves rather than scrolling away. ---- */}
-      <Suspense fallback={null}>
-        <HeroMachine />
-      </Suspense>
+      <AsciiMech />
 
-      {/* ---- Content ---- */}
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-6">
+      {/* ---- Content ----
+          Constrained to the left half on desktop so the ASCII robot owns the
+          right without the two colliding. */}
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-6 lg:max-w-[min(100%,33%)]">
         <p className="label hero-meta mb-9 flex items-center gap-3">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brass-400" />
           Available for work
         </p>
 
-        <h1 className="hero-title max-w-5xl text-[clamp(3rem,11.5vw,9rem)] leading-[0.88] tracking-[-0.04em] text-bone-100">
+        {/* Capped tighter on desktop: the copy column is 38% of the viewport so the
+            mech owns the right, and a 9rem headline would overrun it. */}
+        <h1 className="hero-title max-w-5xl text-[clamp(3rem,11.5vw,9rem)] leading-[0.88] tracking-[-0.04em] text-bone-100 lg:text-[clamp(2.75rem,6.2vw,5.5rem)]">
           {/* Each line is clipped by a wrapper so it can slide up from below
               its own baseline rather than fading. */}
           <span className="block overflow-hidden pb-[0.08em]">
