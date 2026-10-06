@@ -5,9 +5,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import Portfolio from "./pages/Portfolio";
-// The six design directions. Only linked from here, so it stays out of the main
-// bundle's critical path and can be dropped once a direction is chosen.
-const Pitch = lazy(() => import("./pages/Pitch"));
 
 // The admin console pulls in the full Firebase Auth + Firestore write surface.
 // It is a separate route that essentially no visitor opens, so it is split out
@@ -44,14 +41,6 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Portfolio />} />
-        <Route
-          path="/pitch"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <Pitch />
-            </Suspense>
-          }
-        />
         <Route
           path="/admin"
           element={
