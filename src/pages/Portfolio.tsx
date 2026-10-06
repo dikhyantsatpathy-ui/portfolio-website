@@ -1,581 +1,462 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, doc, getDoc, addDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { Section, Profile } from "../types";
-import { MapPin, GraduationCap, Gamepad2, BookOpen, Shield, Code2, Link as LinkIcon, ShieldAlert, ArrowUpRight, Copy, Globe, Github, Twitter, Linkedin, Layers, Terminal as TerminalIcon, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
-import { motion, useScroll, useTransform, AnimatePresence } from "motion/react";
-import { Chatbot } from "../components/Chatbot";
-import { Terminal } from "../components/Terminal";
-import { TiltCard } from "../components/TiltCard";
-import { MagneticButton } from "../components/MagneticButton";
-import { ScrambleText } from "../components/ScrambleText";
-import { SystemHUD } from "../components/SystemHUD";
-import { DraggableWindow } from "../components/DraggableWindow";
-import { FirmwareLock } from "../components/FirmwareLock";
+import { ArrowUpRight, Github, Linkedin, Mail, Send } from "lucide-react";
 
-import { MatrixRain } from "../components/MatrixRain";
+import Hero3D from "../components/Hero3D";
+import EasterEggs from "../components/EasterEggs";
+import PinnedWork from "../components/PinnedWork";
+import SmoothScroll from "../components/SmoothScroll";
+import {
+  Reveal,
+  MagneticLink,
+  SectionHeader,
+  CopyButton,
+} from "../components/ui";
+import {
+  usePortfolioContent,
+  submitContact,
+} from "../lib/usePortfolioContent";
+import { fallbackProfile, socialLinks } from "../data/content";
+import { cn } from "../lib/utils";
 
-function useKonamiCode(callback: () => void) {
-  useEffect(() => {
-    let input: string[] = [];
-    const konamiCode = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
-    const handleKeyDown = (e: KeyboardEvent) => {
-      input.push(e.key);
-      input = input.slice(-10);
-      if (input.join(",") === konamiCode.join(",")) {
-        callback();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [callback]);
-}
+/* ==========================================================================
+   Navigation
+   ========================================================================== */
 
-export default function Portfolio() {
-  const [sections, setSections] = useState<Section[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [visitorInfo, setVisitorInfo] = useState<{ ip: string; location: string } | null>(null);
-  const [isBlocked, setIsBlocked] = useState(false);
-  const [hackerMode, setHackerMode] = useState(false);
-  const [activeWindows, setActiveWindows] = useState<any[]>([]);
-  const [showFirmwareLock, setShowFirmwareLock] = useState(false);
-  const [intrusionDetected, setIntrusionDetected] = useState(false);
-  const { scrollYProgress } = useScroll();
-
-  useKonamiCode(() => {
-    setHackerMode(prev => !prev);
-  });
-
-  useEffect(() => {
-    // Collect visitor info logic below
-  }, []);
-
-  // Reactive cinematic background values (Restoring the old magical gradient feel)
-  const bgY1 = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
-  const bgY2 = useTransform(scrollYProgress, [0, 1], ["0%", "-50%"]);
-  const bgY3 = useTransform(scrollYProgress, [0, 1], ["-20%", "20%"]);
-  
-  const bgScale = useTransform(scrollYProgress, [0, 0.5, 1], [1, 1.2, 1]);
-  const rotate1 = useTransform(scrollYProgress, [0, 1], [0, 180]);
-  const rotate2 = useTransform(scrollYProgress, [0, 1], [0, -180]);
-  
-  const color1 = useTransform(scrollYProgress, [0, 0.5, 1], ["rgba(79, 70, 229, 0.15)", "rgba(168, 85, 247, 0.15)", "rgba(59, 130, 246, 0.15)"]);
-  const color2 = useTransform(scrollYProgress, [0, 0.5, 1], ["rgba(236, 72, 153, 0.1)", "rgba(99, 102, 241, 0.1)", "rgba(16, 185, 129, 0.1)"]);
-  const color3 = useTransform(scrollYProgress, [0, 0.5, 1], ["rgba(59, 130, 246, 0.1)", "rgba(236, 72, 153, 0.1)", "rgba(139, 92, 246, 0.1)"]);
-
-  useEffect(() => {
-    // Check visitor IP
-    const checkVisitor = async () => {
-      try {
-        // First get IPv4
-        const ipRes = await fetch("https://api4.ipify.org?format=json");
-        if (!ipRes.ok) throw new Error("ipify failed");
-        const { ip } = await ipRes.json();
-
-        if (ip && ip !== 'Unknown IP') {
-          const cleanIp = ip.replace(/\//g, '-');
-          const blockedDoc = await getDoc(doc(db, "blocked_ips", cleanIp));
-          if (blockedDoc.exists()) {
-            setIsBlocked(true);
-            return;
-          }
-          
-          let finalLocation = "Unknown Location";
-          try {
-            // Get location for this IP
-            const locRes = await fetch(`https://ipapi.co/${ip}/json/`);
-            if (locRes.ok) {
-              const data = await locRes.json();
-              if (data.city) {
-                finalLocation = `${data.city}, ${data.country_name}`;
-              }
-            }
-          } catch (e) {
-            // Silently fail location fetch
-          }
-          
-          setVisitorInfo({ ip, location: finalLocation });
-          
-          // Log visitor to db
-          try {
-            await setDoc(doc(db, "visitors", cleanIp), {
-              ip: ip,
-              location: finalLocation,
-              lastVisited: new Date().toISOString(),
-              timestamp: serverTimestamp()
-            }, { merge: true });
-          } catch (dbErr) {
-            // Silently fail db log
-          }
-        }
-      } catch (err) {
-        // Silently fail if ipify fails
-      }
-    };
-    checkVisitor();
-  }, []);
-
-  useEffect(() => {
-    if (isBlocked) return;
-    
-    // Fetch sections
-    const q = query(collection(db, "sections"), where("visible", "==", true));
-    const unsubscribeSections = onSnapshot(
-      q,
-      (snapshot) => {
-        let data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Section[];
-        data.sort((a, b) => a.order - b.order);
-        setSections(data);
-      },
-      (error) => handleFirestoreError(error, OperationType.LIST, "sections")
-    );
-
-    // Fetch profile
-    const unsubscribeProfile = onSnapshot(doc(db, "profiles", "main"), (docSnap) => {
-      if (docSnap.exists()) {
-        setProfile({ id: docSnap.id, ...docSnap.data() } as Profile);
-      }
-    });
-
-    return () => {
-      unsubscribeSections();
-      unsubscribeProfile();
-    }
-  }, [isBlocked]);
-
-  if (isBlocked) {
-    return (
-      <div className="min-h-screen bg-[#050507] text-white flex flex-col items-center justify-center p-6 text-center space-y-4">
-        <ShieldAlert className="w-16 h-16 text-red-500 mb-4" />
-        <h1 className="text-3xl font-bold">Access Denied</h1>
-        <p className="text-gray-400 max-w-md">Your IP address has been blocked from accessing this portfolio due to suspicious activity or abuse.</p>
-      </div>
-    );
-  }
-
-  const handleIntrusion = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIntrusionDetected(true);
-    setTimeout(() => {
-      setIntrusionDetected(false);
-    }, 4000);
-  };
-
-  const getSocialLink = (platform: string, value: string) => {
-    if (!value) return "#";
-    if (value.startsWith('http')) return value;
-    switch(platform) {
-      case 'github': return `https://github.com/${value.replace('@', '')}`;
-      case 'linkedin': return `https://linkedin.com${value}`;
-      case 'twitter': return `https://twitter.com/${value.replace('@', '')}`;
-      default: return "#";
-    }
-  };
-
-  const defaultSkills = ["React.js", "Node.js", "TypeScript", "Python", "C/C++", "Java", "Tailwind CSS", "MongoDB", "Firebase"];
-  const skillsArray = profile?.skills || defaultSkills;
-  const loopSkills = [...skillsArray, ...skillsArray, ...skillsArray, ...skillsArray];
-
-  // Dynamic Typography Animation Variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  };
-  const wordVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1, transition: { type: "spring" as const, stiffness: 150, damping: 20 } }
-  };
+function Nav() {
+  const links = [
+    { href: "#work", label: "Work" },
+    { href: "#craft", label: "Craft" },
+    { href: "#about", label: "About" },
+    { href: "#contact", label: "Contact" },
+  ];
 
   return (
-    <AnimatePresence>
-      <div className={`portfolio-container min-h-screen ${hackerMode ? 'bg-black text-green-500 font-mono' : 'bg-[#050507] text-gray-200 font-sans'} selection:bg-indigo-500/30 relative overflow-hidden transition-colors duration-1000`}>
-        
-        {showFirmwareLock && <FirmwareLock onClose={() => setShowFirmwareLock(false)} />}
-        
-        {intrusionDetected && (
-          <div className="fixed inset-0 z-[99999] bg-red-900 flex flex-col items-center justify-center font-mono mix-blend-difference animate-pulse">
-            <h1 className="text-6xl md:text-8xl font-bold text-white tracking-tighter mb-4 text-center px-4">INTRUSION DETECTED</h1>
-            <p className="text-2xl md:text-4xl text-white/80">IP {visitorInfo?.ip || 'UNKNOWN'} LOGGED.</p>
-            <div className="mt-8 text-white/50 text-sm">Initiating trace...</div>
-          </div>
-        )}
+    <nav className="fixed inset-x-0 top-0 z-50 border-b border-bone-100/8 bg-ink-900/70 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        <a
+          href="#top"
+          className="flex items-center py-2 font-mono text-sm tracking-tight text-bone-200 transition-colors hover:text-brass-400"
+        >
+          DS<span aria-hidden="true" className="text-bone-500">/</span>
+        </a>
 
-        {hackerMode && (
-          <>
-            <MatrixRain />
-            <div className="fixed inset-0 pointer-events-none z-[9998] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay">
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-green-500/10 to-transparent animate-[scan_2s_linear_infinite]" />
-            </div>
-          </>
-        )}
-
-        {/* System HUD Overlay */}
-        <SystemHUD />
-
-        {/* Reactive Background Gradients */}
-        {!hackerMode && (
-          <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden flex items-center justify-center">
-            <motion.div 
-              style={{ y: bgY1, scale: bgScale, rotate: rotate1, backgroundColor: color1 }}
-              className="absolute top-[-20%] left-[-10%] w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] rounded-full blur-[120px]" 
-            />
-            <motion.div 
-              style={{ y: bgY2, scale: bgScale, rotate: rotate2, backgroundColor: color2 }}
-              className="absolute bottom-[-20%] right-[-10%] w-[70vw] h-[70vw] max-w-[700px] max-h-[700px] rounded-full blur-[120px]" 
-            />
-            <motion.div 
-              style={{ y: bgY3, scale: bgScale, backgroundColor: color3 }}
-              className="absolute top-[30%] left-[30%] w-[60vw] h-[60vw] max-w-[600px] max-h-[600px] rounded-full blur-[150px]" 
-            />
-          </div>
-        )}
-
-        <div className="relative z-10 max-w-[1000px] mx-auto px-6 py-12 sm:py-20 space-y-24">
-          
-          {/* Header / Profile with Dynamic Typography */}
-          <motion.header 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="space-y-8 pt-12 text-center sm:text-left"
-          >
-            <div className="flex justify-center sm:justify-start gap-3">
-              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-medium text-gray-300 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-shadow duration-300 cursor-default">Available for hire</span>
-              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-medium text-gray-300 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-shadow duration-300 cursor-default">Based in India</span>
-            </div>
-
-            <motion.div 
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="space-y-4"
-            >
-              <h1 className="text-5xl sm:text-7xl font-bold tracking-tight text-white pb-2 flex flex-wrap justify-center sm:justify-start gap-[0.3em]">
-                {`Hello, I'm ${profile?.name ? profile.name.split(" ")[0] : "Dikhyant"}.`.split(" ").map((word, i) => (
-                  <motion.span key={i} variants={wordVariants} className="inline-block">{word}</motion.span>
-                ))}
-              </h1>
-              <motion.p variants={wordVariants} className={`text-xl sm:text-2xl ${hackerMode ? 'text-green-400' : 'text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400'} font-medium tracking-wide`}>
-                {profile?.subtitle || "Full Stack Developer."}
-              </motion.p>
-            </motion.div>
-            
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 text-sm sm:text-base text-gray-400">
-              <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.03] border border-white/10 shadow-sm"><MapPin className="w-4 h-4 text-indigo-400" /> {profile?.location || "Odisha, India"}</span>
-              <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.03] border border-white/10 shadow-sm"><GraduationCap className="w-4 h-4 text-indigo-400" /> {profile?.educationInfo || "Class of 2028"}</span>
-              <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.03] border border-white/10 shadow-sm"><Code2 className="w-4 h-4 text-indigo-400" /> {profile?.institution || "ITER, SOA University"}</span>
-            </div>
-
-            <div className="text-gray-400 text-lg max-w-2xl mx-auto sm:mx-0 whitespace-pre-wrap">
-              <p>
-                {profile?.bio || "I build accessible, pixel-perfect, and scalable web apps. Specializing in modern UI/UX architecture and cybersecurity to turn complex problems into elegant digital reality."}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap justify-center sm:justify-start gap-4 pt-4">
-              <MagneticButton 
-                onClick={(e) => {
-                  e.preventDefault();
-                  const email = profile?.email || 'dikhyantsatpathy@gmail.com';
-                  // Browsers block popups if delayed (setTimeout). We must open it synchronously.
-                  // We open Gmail web in a new tab, and also attempt to trigger the local mail app.
-                  window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${email}`, '_blank');
-                  window.location.href = `mailto:${email}`;
-                }} 
-                className="bg-white text-black px-6 py-3 rounded-full font-medium hover:bg-gray-200 transition-colors flex items-center gap-2 text-sm cursor-pointer"
+        <ul className="hidden items-center gap-8 sm:flex">
+          {links.map((l) => (
+            <li key={l.href}>
+              <a
+                href={l.href}
+                className="text-sm text-bone-400 transition-colors duration-300 hover:text-bone-100"
               >
-                Connect now <ArrowUpRight className="w-4 h-4" />
-              </MagneticButton>
-              <MagneticButton onClick={() => navigator.clipboard.writeText(profile?.email || 'dikhyantsatpathy@gmail.com')} className="bg-[#111] text-white border border-white/10 px-6 py-3 rounded-full font-medium hover:bg-white/5 transition-colors flex items-center gap-2 text-sm">
-                <Copy className="w-4 h-4 text-gray-400" /> Copy Email
-              </MagneticButton>
-            </div>
-          </motion.header>
+                {l.label}
+              </a>
+            </li>
+          ))}
+        </ul>
 
-          {/* Interactive Terminal */}
-          <motion.section 
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            className="pt-12"
-          >
-            <div className="flex items-center gap-3 justify-center sm:justify-start mb-8">
-              <TerminalIcon className="w-6 h-6 text-indigo-400" />
-              <h2 className="text-2xl font-bold text-white tracking-tight">
-                <ScrambleText text="Interactive Terminal" />
-              </h2>
-            </div>
-            <Terminal profile={profile} />
-          </motion.section>
-
-          {/* Interests Section */}
-          {(profile?.interests && profile.interests.length > 0) && (
-            <motion.section 
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.8 }}
-              className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6`}
-            >
-              {profile.interests.map((interest, idx) => {
-                const colors = [
-                  { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20", hover: "hover:border-indigo-500/50", gradient: "from-indigo-500/10" },
-                  { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", hover: "hover:border-purple-500/50", gradient: "from-purple-500/10" },
-                  { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", hover: "hover:border-blue-500/50", gradient: "from-blue-500/10" },
-                  { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", hover: "hover:border-emerald-500/50", gradient: "from-emerald-500/10" },
-                  { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", hover: "hover:border-amber-500/50", gradient: "from-amber-500/10" },
-                ];
-                const c = colors[idx % colors.length];
-                
-                const getIcon = (iconName: string) => {
-                  switch (iconName.toLowerCase()) {
-                    case 'gamepad': return <Gamepad2 className="w-7 h-7" />;
-                    case 'shield': return <Shield className="w-7 h-7" />;
-                    case 'book': return <BookOpen className="w-7 h-7" />;
-                    case 'code': return <Code2 className="w-7 h-7" />;
-                    default: return <Sparkles className="w-7 h-7" />;
-                  }
-                };
-
-                return (
-                  <div key={interest.id} className={`group relative bg-white/[0.02] backdrop-blur-md p-8 rounded-[1.5rem] border border-white/5 ${c.hover} hover:bg-white/[0.04] transition-all duration-500 overflow-hidden shadow-2xl`}>
-                    <div className={`absolute inset-0 bg-gradient-to-br ${c.gradient} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                    <div className="relative z-10 space-y-5">
-                      <div className={`p-4 ${c.bg} w-fit rounded-2xl ${c.text} group-hover:scale-110 transition-transform duration-500 border ${c.border} shadow-inner`}>
-                        {getIcon(interest.icon)}
-                      </div>
-                      <h3 className="text-xl font-semibold text-white">{interest.title}</h3>
-                      <p className="text-gray-400 leading-relaxed">
-                        {interest.description}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </motion.section>
-          )}
-
-          {/* The Secret Sauce (Skills/Tech Stack) Marquee Fixed Perfect Loop */}
-          <motion.section 
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="space-y-8 overflow-hidden"
-          >
-            <div className="flex items-center gap-3 justify-center sm:justify-start">
-              <TerminalIcon className="w-6 h-6 text-white" />
-              <h2 className="text-2xl font-bold text-white tracking-tight">
-                <ScrambleText text="The Secret Sauce" />
-              </h2>
-            </div>
-            <div className="relative w-full flex flex-col gap-4 overflow-hidden mask-edges pb-4">
-              {/* Top Row - Marquee Left to Right Perfect Loop */}
-              <motion.div 
-                animate={{ x: ["-50%", "0%"] }}
-                transition={{ repeat: Infinity, duration: 40, ease: "linear" }}
-                className="flex whitespace-nowrap gap-3 w-max"
-              >
-                {loopSkills.map((skill, idx) => (
-                  <span key={`${skill}-${idx}-top`} className="px-5 py-3 bg-white/[0.02] border border-white/5 rounded-[1rem] text-gray-300 text-sm cursor-default hover:bg-white/5 transition-colors hover:text-white hover:border-indigo-500/30">
-                    {skill}
-                  </span>
-                ))}
-              </motion.div>
-              
-              {/* Bottom Row - Marquee Right to Left Perfect Loop */}
-              <motion.div 
-                animate={{ x: ["0%", "-50%"] }}
-                transition={{ repeat: Infinity, duration: 40, ease: "linear" }}
-                className="flex whitespace-nowrap gap-3 w-max"
-              >
-                {loopSkills.map((skill, idx) => (
-                  <span key={`${skill}-${idx}-bottom`} className="px-5 py-3 bg-white/[0.02] border border-white/5 rounded-[1rem] text-gray-300 text-sm cursor-default hover:bg-white/5 transition-colors hover:text-white hover:border-purple-500/30">
-                    {skill}
-                  </span>
-                ))}
-              </motion.div>
-            </div>
-          </motion.section>
-
-          {/* Dynamic Sections (Selected Work with 3D Tilt Cards and OS Windows) */}
-          <div className="space-y-32 relative z-50">
-            {/* Active OS Windows */}
-            <AnimatePresence>
-              {activeWindows.map((win, i) => (
-                <DraggableWindow 
-                  key={`${win.id}-${i}`} 
-                  title={win.title} 
-                  onClose={() => setActiveWindows(prev => prev.filter((_, idx) => idx !== i))}
-                >
-                  <div className="p-6 space-y-4">
-                    {win.imageUrl && (
-                      <img src={win.imageUrl} alt={win.title} className="w-full h-auto rounded-lg shadow-lg border border-white/10" />
-                    )}
-                    <p className="text-gray-300 leading-relaxed text-sm md:text-base">{win.description}</p>
-                    {win.link && (
-                      <a href={win.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                        View Project <ArrowUpRight className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                </DraggableWindow>
-              ))}
-            </AnimatePresence>
-
-            {sections.map((section, idx) => (
-              section.items.length > 0 && (
-                <motion.section 
-                  key={section.id}
-                  initial={{ opacity: 0, y: 40 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.7, delay: idx * 0.1 }}
-                  className="space-y-12"
-                >
-                  <div className="flex items-center gap-6">
-                    <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                      <ScrambleText text={section.title} />
-                    </h2>
-                    <div className="h-[1px] flex-1 bg-gradient-to-r from-indigo-500/30 via-white/10 to-transparent" />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 perspective-1000">
-                    {section.items.map((item) => (
-                      <div key={item.id} onClick={() => setActiveWindows(prev => [...prev, item])} className="cursor-pointer group">
-                        <TiltCard>
-                          <div className="h-full flex flex-col bg-[#0a0a0c]/80 backdrop-blur-xl rounded-[2rem] border border-white/5 overflow-hidden transition-all duration-700 group-hover:border-indigo-500/50 group-hover:bg-white/[0.03] shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)]">
-                            {item.imageUrl && (
-                              <div className="h-64 w-full bg-[#050507] overflow-hidden relative border-b border-white/5">
-                                <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500" />
-                                {/* Hover Video Preview overlay mock */}
-                                <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 mix-blend-overlay" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-transparent to-transparent pointer-events-none" />
-                              </div>
-                            )}
-                            <div className="p-8 flex flex-col flex-1 relative z-10">
-                              <div className="flex justify-between items-start gap-4">
-                                <h3 className="text-2xl font-bold text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-purple-400 transition-all duration-500">{item.title}</h3>
-                              </div>
-                              <div className="flex flex-wrap gap-2 mt-4">
-                                {item.date && (
-                                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/5 text-gray-400 text-xs font-medium">
-                                    {item.date}
-                                  </span>
-                                )}
-                              </div>
-                              {item.description && (
-                                <p className="mt-5 text-gray-400 leading-relaxed flex-1 text-base line-clamp-3">{item.description}</p>
-                              )}
-                              <p className="text-xs text-indigo-400/50 mt-6 font-mono opacity-0 group-hover:opacity-100 transition-opacity duration-300">{'>> CLICK TO OPEN IN WINDOW'}</p>
-                            </div>
-                          </div>
-                        </TiltCard>
-                      </div>
-                    ))}
-                  </div>
-                </motion.section>
-              )
-            ))}
-          </div>
-
-          {/* Let's Work Together CTA */}
-          <motion.section 
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-32 p-12 sm:p-24 bg-[#0a0a0c] border border-white/5 rounded-[3rem] text-center space-y-8 relative overflow-hidden shadow-2xl"
-          >
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] bg-gradient-to-b from-indigo-500/10 via-purple-500/5 to-transparent rounded-full blur-[100px] pointer-events-none" />
-            
-            <div className="relative z-10 space-y-6">
-              <h2 className="text-5xl sm:text-7xl font-bold text-white tracking-tight">Let's work together.</h2>
-              <p className="text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto">
-                Have a project in mind? Let's build something amazing together.
-              </p>
-              
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target as HTMLFormElement);
-                if (formData.get('honeypot')) {
-                  return;
-                }
-                const btn = (e.target as HTMLFormElement).querySelector('button');
-                const name = formData.get('name') as string;
-                const email = formData.get('email') as string;
-                const message = formData.get('message') as string;
-                
-                if (btn) {
-                  const originalText = btn.innerText;
-                  btn.innerText = 'Sending...';
-                  try {
-                    await addDoc(collection(db, "messages"), {
-                      name,
-                      email,
-                      message,
-                      createdAt: serverTimestamp(),
-                      read: false
-                    });
-                    
-                    btn.innerText = 'Message Sent!';
-                    (e.target as HTMLFormElement).reset();
-                  } catch (error: any) {
-                    console.error("Error sending message", error);
-                    btn.innerText = 'Error! Try again.';
-                  } finally {
-                    setTimeout(() => btn.innerText = originalText, 3000);
-                  }
-                }
-              }} className="mt-12 max-w-md mx-auto space-y-4 text-left">
-                {/* Honeypot field (hidden from real users, attractive to bots) */}
-                <input type="text" name="honeypot" className="hidden" tabIndex={-1} autoComplete="off" />
-                
-                <input type="text" name="name" placeholder="Name" required className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white outline-none focus:border-indigo-500 transition-colors placeholder:text-gray-500" />
-                <input type="email" name="email" placeholder="Email" required className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white outline-none focus:border-indigo-500 transition-colors placeholder:text-gray-500" />
-                <textarea name="message" placeholder="Message" required rows={4} className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white outline-none focus:border-indigo-500 transition-colors resize-none placeholder:text-gray-500" />
-                
-                <button type="submit" className="w-full bg-indigo-600 text-white px-8 py-4 rounded-xl font-medium hover:bg-indigo-700 transition-all shadow-[0_0_30px_-5px_rgba(79,70,229,0.5)] active:scale-95">
-                  Send Message
-                </button>
-              </form>
-
-              <div className="flex flex-wrap justify-center gap-4 pt-8 border-t border-white/10 mt-8">
-                <MagneticButton 
-                  href="mailto:dikhyantsatpathy@gmail.com" target="_top"
-                  className="bg-white/5 text-gray-300 border border-white/10 px-8 py-4 rounded-full font-medium hover:bg-white/10 transition-colors"
-                >
-                  Or just email me directly
-                </MagneticButton>
-              </div>
-            </div>
-          </motion.section>
-
-          {/* Footer */}
-          <footer className="pt-24 pb-8 flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-gray-500">
-            <p>© {new Date().getFullYear()} {profile?.name || "Dikhyant Satapathy"}. All rights reserved.</p>
-            <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6">
-              {visitorInfo && (
-                <div className="flex items-center gap-2 mr-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Your IP: {visitorInfo.ip} • {visitorInfo.location}</span>
-                </div>
-              )}
-              <a href={getSocialLink('twitter', profile?.twitter || '')} target="_blank" rel="noreferrer" className="magnetic hover:text-white transition-colors p-2">Twitter</a>
-              <a href={getSocialLink('linkedin', profile?.linkedin || '')} target="_blank" rel="noreferrer" className="magnetic hover:text-white transition-colors p-2">LinkedIn</a>
-              <a href={getSocialLink('github', profile?.github || '')} target="_blank" rel="noreferrer" className="magnetic hover:text-white transition-colors p-2">GitHub</a>
-              <Link to="/admin" className="hover:text-white transition-colors ml-2 pl-6 border-l border-white/10">Admin Panel</Link>
-              <a href="#" onClick={handleIntrusion} className="text-xs text-red-900/50 hover:text-red-500 transition-colors cursor-pointer">Restricted Area</a>
-            </div>
-          </footer>
-        </div>
-        <Chatbot />
+        <a
+          href={`mailto:${fallbackProfile.email}`}
+          // py-1.5 brings the hit area to >=24px tall without changing the
+          // visual weight (SC 2.5.8).
+          className="-my-1.5 inline-flex items-center py-1.5 font-mono text-xs tracking-wide text-bone-500 transition-colors hover:text-brass-400"
+        >
+          get in touch
+        </a>
       </div>
-    </AnimatePresence>
+    </nav>
+  );
+}
+
+/* ==========================================================================
+   About
+   ========================================================================== */
+
+function About({
+  bio,
+  educationInfo,
+  institution,
+}: {
+  bio: string;
+  educationInfo?: string;
+  institution?: string;
+}) {
+  return (
+    <section id="about" className="px-6 py-[var(--spacing-section)]">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          index="01"
+          eyebrow="About"
+          title="I care about the parts users never see."
+        />
+
+        <div className="grid gap-14 lg:grid-cols-12">
+          <Reveal className="lg:col-span-7">
+            <p className="text-[clamp(1.25rem,2.4vw,1.75rem)] leading-[1.45] tracking-[-0.01em] text-bone-200">
+              {bio}
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.12} className="lg:col-span-5 lg:pl-8">
+            <dl className="space-y-6">
+              <div>
+                <dt className="label mb-1.5">Education</dt>
+                <dd className="text-bone-200">{educationInfo}</dd>
+                <dd className="mt-1 text-sm text-bone-600">{institution}</dd>
+              </div>
+              <div>
+                <dt className="label mb-1.5">Focus</dt>
+                <dd className="text-bone-200">
+                  Frontend architecture, backend reliability, security
+                </dd>
+              </div>
+            </dl>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ==========================================================================
+   Craft — skills marquee + interest grid
+   ========================================================================== */
+
+function Craft({
+  skills,
+  interests,
+}: {
+  skills: string[];
+  interests?: import("../types").Interest[];
+}) {
+  // Two identical groups inside one track. The track translates -50%, which
+  // lands exactly on the seam between them — so the loop has no visible jump.
+  // Spacing comes from padding on the items rather than `gap`, because a gap
+  // would offset the two groups by half a gap and the seam would not line up.
+  const group = (keyPrefix: string) =>
+    skills.map((s, i) => (
+      <span
+        key={`${keyPrefix}-${s}-${i}`}
+        className="shrink-0 rounded-tile border border-bone-100/8 bg-ink-850/60 px-5 py-3 font-mono text-sm text-bone-400 transition-colors duration-300 hover:border-brass-400/30 hover:text-brass-300"
+      >
+        {s}
+      </span>
+    ));
+
+  return (
+    <section id="craft" className="py-[var(--spacing-section)]">
+      <div className="mx-auto max-w-6xl px-6">
+        <SectionHeader
+          index="03"
+          eyebrow="Toolkit"
+          title="Tools I reach for, and why."
+        />
+      </div>
+
+      <div
+        className="relative overflow-hidden py-2"
+        style={{
+          maskImage:
+            "linear-gradient(to right, transparent, black 8%, black 92%, transparent)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent, black 8%, black 92%, transparent)",
+        }}
+      >
+        <div
+          className="flex w-max will-change-transform motion-reduce:animate-none"
+          style={{ animation: "var(--animate-marquee)" }}
+        >
+          <div className="flex shrink-0 gap-3 pr-3">{group("a")}</div>
+          {/* Duplicate is decorative; screen readers already read group one. */}
+          <div className="flex shrink-0 gap-3 pr-3" aria-hidden="true">
+            {group("b")}
+          </div>
+        </div>
+      </div>
+
+      {interests?.length ? (
+        <div className="mx-auto mt-24 max-w-6xl px-6">
+          <ul className="grid gap-px overflow-hidden rounded-card border border-bone-100/8 bg-bone-100/8 sm:grid-cols-2">
+            {interests.map((it, i) => (
+              <Reveal as="li" key={it.id} delay={i * 0.05}>
+                <div className="group h-full bg-ink-900 p-8 transition-colors duration-500 hover:bg-ink-850">
+                  <h3 className="mb-3 text-lg text-bone-100 transition-colors group-hover:text-brass-300">
+                    {it.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-bone-600">
+                    {it.description}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/* ==========================================================================
+   Contact
+   ========================================================================== */
+
+function Contact({ email }: { email: string }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (status === "sending") return;
+
+    setStatus("sending");
+    setError(null);
+
+    const fd = new FormData(e.currentTarget);
+    const result = await submitContact({
+      name: String(fd.get("name") ?? ""),
+      email: String(fd.get("email") ?? ""),
+      message: String(fd.get("message") ?? ""),
+      website: String(fd.get("website") ?? ""),
+    });
+
+    if (result.ok) {
+      setStatus("sent");
+      e.currentTarget.reset();
+      setTimeout(() => setStatus("idle"), 4000);
+    } else {
+      setStatus("idle");
+      setError(result.error);
+    }
+  };
+
+  // `focus:outline-none` was paired with only a border-colour change, which is
+  // a weak indicator and fails SC 2.4.11. The focus-visible ring is the real
+  // one; the border tint is just the accompanying colour shift.
+  const field =
+    "w-full rounded-tile border border-bone-100/10 bg-ink-850/60 px-5 py-4 text-bone-100 placeholder:text-bone-600 transition-colors duration-300 focus:border-brass-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass-400";
+
+  return (
+    <section id="contact" className="px-6 py-[var(--spacing-section)]">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          index="04"
+          eyebrow="Contact"
+          title="Have something worth building?"
+          lede="Send a note and I'll get back to you. This form writes straight to my inbox."
+        />
+
+        <div className="grid gap-16 lg:grid-cols-2">
+          <Reveal>
+            <a
+              href={`mailto:${email}`}
+              className="group inline-flex items-center gap-3 text-[clamp(1.25rem,2.5vw,1.75rem)] text-bone-100 transition-colors hover:text-brass-300"
+            >
+              <Mail className="h-5 w-5 text-bone-700" strokeWidth={1.5} />
+              {email}
+              <ArrowUpRight
+                className="h-4 w-4 text-bone-700 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                strokeWidth={1.75}
+              />
+            </a>
+
+            <ul className="mt-10 flex flex-wrap gap-x-8 gap-y-3">
+              {socialLinks.map((s) => (
+                <li key={s.handle}>
+                  <a
+                    href={s.href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-2 py-1 text-sm text-bone-500 transition-colors hover:text-brass-400"
+                  >
+                    {s.handle === "github" ? (
+                      <Github className="h-4 w-4" strokeWidth={1.5} />
+                    ) : (
+                      <Linkedin className="h-4 w-4" strokeWidth={1.5} />
+                    )}
+                    {s.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div aria-hidden className="absolute left-[-9999px]">
+                <label htmlFor="website">Website</label>
+                <input
+                  id="website"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Real <label> elements, visually hidden but present. A placeholder is not a
+                  label — it vanishes on focus and screen readers may skip it
+                  (SC 3.3.2, 4.1.2). `peer` drives the focus ring off the real
+                  control. */}
+              <label htmlFor="c-name" className="sr-only">
+                Your name
+              </label>
+              <input
+                id="c-name"
+                type="text"
+                name="name"
+                required
+                placeholder="Name"
+                autoComplete="name"
+                aria-required="true"
+                className={field}
+              />
+
+              <label htmlFor="c-email" className="sr-only">
+                Your email
+              </label>
+              <input
+                id="c-email"
+                type="email"
+                name="email"
+                required
+                placeholder="Email"
+                autoComplete="email"
+                aria-required="true"
+                className={field}
+              />
+
+              <label htmlFor="c-message" className="sr-only">
+                Your message
+              </label>
+              <textarea
+                id="c-message"
+                name="message"
+                required
+                rows={5}
+                placeholder="What are you building?"
+                aria-required="true"
+                className={`${field} resize-y`}
+              />
+
+              <button
+                type="submit"
+                disabled={status === "sending"}
+                className="inline-flex w-full items-center justify-center gap-2.5 rounded-tile bg-brass-400 px-6 py-4 font-medium text-ink-900 transition-colors duration-300 hover:bg-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {status === "sending"
+                  ? "Sending…"
+                  : status === "sent"
+                    ? "Sent — thanks"
+                    : "Send message"}
+                {status === "idle" && (
+                  <Send className="h-4 w-4" strokeWidth={2} />
+                )}
+              </button>
+
+              {error && (
+                <p role="alert" className="text-sm text-copper-400">
+                  {error}
+                </p>
+              )}
+              <p aria-live="polite" className="sr-only">
+                {status === "sent" ? "Message sent successfully" : ""}
+              </p>
+            </form>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ==========================================================================
+   Page
+   ========================================================================== */
+
+export default function Portfolio() {
+  const { profile, sections, live } = usePortfolioContent();
+
+  // Shockwave counter, shared with the machine via a custom event.
+  const [zaps, setZaps] = useState(0);
+  useEffect(() => {
+    const onZap = () => setZaps((n) => n + 1);
+    window.addEventListener("ds:shockwave", onZap);
+    return () => window.removeEventListener("ds:shockwave", onZap);
+  }, []);
+
+  const skills = profile.skills?.length ? profile.skills : fallbackProfile.skills;
+  const projects = sections.flatMap((s) => s.items ?? []);
+
+  useEffect(() => {
+    document.title = `${profile.name} — Software Engineer`;
+  }, [profile.name]);
+
+  return (
+    <div className="relative grain min-h-screen bg-ink-900 text-bone-100">
+      <SmoothScroll />
+      <EasterEggs />
+
+      {/* Skip link — first tab stop. Off-screen until focused, then visible.
+          Without it, keyboard users tab through the nav on every page load. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-6 focus:top-6 focus:z-[80] focus:rounded-tile focus:bg-brass-500 focus:px-5 focus:py-3 focus:font-medium focus:text-ink-900"
+      >
+        Skip to content
+      </a>
+
+      <Nav />
+
+      <main id="main" tabIndex={-1}>
+        <Hero3D />
+        {/* The DS monogram links to #top. */}
+        <span id="top" className="sr-only" aria-hidden="true" />
+
+        <About
+          bio={profile.bio || fallbackProfile.bio}
+          educationInfo={profile.educationInfo}
+          institution={profile.institution}
+        />
+
+        <PinnedWork sections={projects} />
+
+        <Craft skills={skills} interests={profile.interests} />
+
+        <Contact email={profile.email || fallbackProfile.email} />
+      </main>
+
+      <footer className="relative z-10 border-t border-bone-100/8 px-6 py-10">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-mono text-xs text-bone-700">
+            © {new Date().getFullYear()} {profile.name}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {!live && (
+              <span className="font-mono text-xs text-bone-700">
+                static preview
+              </span>
+            )}
+            {/* Visible payoff for the click easter egg. */}
+            {zaps > 0 && (
+              <span
+                className="font-mono text-xs tabular text-brass-400/70"
+                title="Every click on the machine counts"
+              >
+                ⚡ {zaps}
+              </span>
+            )}
+            <span className="font-mono text-xs text-bone-700">
+              <kbd className="rounded-sm border border-bone-100/15 px-1.5 py-0.5 font-mono text-[10px] text-bone-600">
+                `
+              </kbd>{" "}
+              for commands
+            </span>
+            <a
+              href="/admin"
+              className="-my-1.5 inline-flex items-center py-1.5 font-mono text-xs text-bone-500 transition-colors hover:text-bone-300"
+            >
+              admin
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }
