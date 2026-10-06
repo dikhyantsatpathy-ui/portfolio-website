@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "gsap-react": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-react/SKILL.md",
+      "computedHash": "255206fb6a4a079ad73b4a12e7c63197dc451a8549c7ac4e852b50ff74ef3bd6"
+    },
+    "react-patterns": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/react-patterns/SKILL.md",
+      "computedHash": "44d2c6304ff7ea20643a0203b74de9c7a42e1f70a2b73a5762500dea385dfc44"
+    }
+  }
+}
