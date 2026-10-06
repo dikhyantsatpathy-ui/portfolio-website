@@ -2,8 +2,8 @@
 
 Personal site for **Dikhyant Satapathy** — software engineer.
 
-A scroll-driven single page: a 3D mech rendered as ASCII text walks the viewport,
-over a CSS 3D corridor, with a pinned horizontal project track.
+A scroll-driven single page: a 3D mech walker rendered as ASCII text crosses the
+viewport, over a CSS 3D corridor, with a pinned horizontal project track.
 
 ## Stack
 
@@ -30,20 +30,31 @@ npm run lint                 # tsc --noEmit
 npm run build                # production build to dist/
 ```
 
-## The ASCII mech
+## The ASCII walker
 
-There is no WebGL and no Three.js. The mech is real 3D geometry rasterised in
+There is no WebGL and no Three.js. The walker is real 3D geometry rasterised in
 software and printed as characters:
 
-1. The mech is built from boxes into triangles with flat normals.
+1. The hull, cockpit, cannons and four articulated legs are built from boxes into
+   triangles with flat normals.
 2. Each frame: transform, project with a perspective divide, rasterise into a
    z-buffer.
 3. Each covered cell stores shaded luminance.
 4. Luminance picks a glyph from a density ramp — so shading *is* character
    density, and the mid-tones fall out of geometry and light.
 
-Doing it this way is what gives real foreshortening and self-occlusion, and it
-removed a 536 kB dependency, a GPU context and a shader compile.
+Doing it this way gives real foreshortening and self-occlusion, and it removed a
+536 kB dependency, a GPU context and a shader compile. The page now ships no
+canvas at all.
+
+Two decisions came from testing rather than taste:
+
+- **It's a walker, not a humanoid.** A biped's silhouette collapses when it turns
+  edge-on; a slab hull reads identically from every angle. The yaw band is also
+  narrowed to ±0.34 rad — a full rotation spends too long past 70° off frontal,
+  where the model is just noise.
+- **The camera sits below the hull and looks up.** That single choice is most of
+  why it reads as enormous.
 
 ## How it fits together
 
