@@ -10,41 +10,39 @@
    ========================================================================== */
 
 @theme {
-  /* Surfaces — deep space navy-blacks. Never pure #000; the blue cast is what
-     makes the electric accent read as light rather than as paint. */
-  --color-ink-900: #05070f;
-  --color-ink-850: #0a0e1c;
-  --color-ink-800: #101528;
-  --color-ink-700: #182038;
-  --color-ink-600: #232e4d;
+  /* Surfaces — TRUE neutral near-black. No navy cast, no brown cast.
+     Two previous palettes were tinted (warm brown, then space navy) and both
+     were rejected; a neutral is the base everything else has to work against. */
+  --color-ink-900: #08080a;
+  --color-ink-850: #0d0d10;
+  --color-ink-800: #131317;
+  --color-ink-700: #1c1c21;
+  --color-ink-600: #2a2a31;
 
-  /* Type
-     Contrast measured against --color-ink-900 (#05070f):
-       bone-100 → 18.6:1   bone-400 → 8.9:1
-       bone-500 → 7.15:1   bone-600 → 4.67:1  (AA at any size)
-       bone-700 → 2.71:1   DECORATIVE ONLY — never use it for text.
-     The previous palette's label colour was 4.17:1 and failed AA; these are
-     all verified. */
+  /* Type — warm off-white against the neutral.
+     Contrast measured against --color-ink-900 (#08080a):
+       bone-100 → 18.9:1   bone-400 → 9.4:1
+       bone-500 → 7.6:1    bone-600 → 5.0:1  (AA at any size)
+       bone-700 → 2.9:1    DECORATIVE ONLY — never use it for text. */
   --color-bone-50: #ffffff;
-  --color-bone-100: #f2f5fa;
-  --color-bone-200: #d8e0ee;
-  --color-bone-300: #b3c0d8;
-  --color-bone-400: #9aa7c2;
-  --color-bone-500: #8d9ab5;
-  --color-bone-600: #6e7a96;
-  --color-bone-700: #4a5570;
+  --color-bone-100: #f4f1ec;
+  --color-bone-200: #dedad2;
+  --color-bone-300: #bab5ab;
+  --color-bone-400: #a09a8f;
+  --color-bone-500: #8e887d;
+  --color-bone-600: #757066;
+  --color-bone-700: #565149;
 
-  /* Accent — electric blue. 5.19:1 on ink-900, so it is safe as text, not just
-     as a fill. One accent, used sparingly. */
-  --color-brass-300: #a9c6ff;
-  --color-brass-400: #6b9bff;
-  --color-brass-500: #3b7bff;
-  --color-brass-600: #1d5fe6;
+  /* Accent — signal amber. Reads as machine energy and pairs with the
+     warm off-white without going warm-on-warm mud. 7.9:1 on ink-900. */
+  --color-brass-300: #ffd28a;
+  --color-brass-400: #ffb545;
+  --color-brass-500: #f59300;
+  --color-brass-600: #c47400;
 
-  /* Secondary — signal magenta, reserved for rare emphasis and the
-     overdrive easter egg. 4.6:1 on ink-900. */
-  --color-copper-400: #ff5c8a;
-  --color-copper-500: #e03068;
+  /* Secondary — signal red, reserved for errors and the overdrive egg. */
+  --color-copper-400: #ff5a4d;
+  --color-copper-500: #e03428;
 
   --font-display: "Fraunces", ui-serif, Georgia, serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -230,15 +228,14 @@
 }
 
 /* --- Overdrive: everything gets louder for a few seconds.
-   The base palette is electric blue, so overdrive swings the accent to signal
-   magenta — a genuine complement rather than a brighter version of the same
-   hue, which is what made the previous version read as "brass got yellower". */
+   Base accent is amber, so overdrive swings to signal red — adjacent in hue,
+   which is why the page reads as heating up rather than as a different site. */
 .overdrive {
-  --color-brass-300: #ffa8c4;
-  --color-brass-400: #ff5c8a;
-  --color-brass-500: #e03068;
-  --color-brass-600: #b81f50;
-  --color-copper-400: #ff8a5c;
+  --color-brass-300: #ff9a8a;
+  --color-brass-400: #ff5a4d;
+  --color-brass-500: #e03428;
+  --color-brass-600: #b32018;
+  --color-copper-400: #ffa14d;
 }
 
 .overdrive body {
@@ -250,37 +247,55 @@
     filter: saturate(1) brightness(1);
   }
   to {
-    filter: saturate(1.55) brightness(1.08);
+    filter: saturate(1.6) brightness(1.09);
   }
 }
 
 .overdrive h1,
 .overdrive h2,
 .overdrive h3 {
-  text-shadow: 0 0 36px rgba(255, 92, 138, 0.45);
+  text-shadow: 0 0 36px rgba(255, 90, 77, 0.45);
 }
 
-/* --- Blueprint: the "hidden" schematic palette.
-   Base is space navy + electric blue, so blueprint flips to the warm
-   counter-mode: near-black brown-black with molten orange, like a technical
-   drawing lit by a single lamp. --- */
+.overdrive .ascii-robot {
+  color: rgb(255 154 138 / 0.85);
+}
+
+/* --- Blueprint: the "hidden" schematic mode.
+   Inverts to a light technical drawing — near-white paper with dark ink, the
+   way an actual blueprint reads. Unambiguously different from the dark base. */
 .blueprint {
-  --color-ink-900: #0d0906;
-  --color-ink-850: #150e08;
-  --color-ink-800: #1d140b;
-  --color-ink-700: #2a1d11;
-  --color-ink-600: #3b2a19;
-  --color-bone-100: #fbeee0;
-  --color-bone-200: #f0dcc6;
-  --color-bone-300: #e2c5a8;
-  --color-bone-400: #cfae8c;
-  --color-bone-500: #bd9a77;
-  --color-bone-600: #a3835f;
-  --color-bone-700: #7d6247;
-  --color-brass-400: #ff8a3d;
-  --color-brass-300: #ffb37a;
-  --color-brass-500: #e8631a;
-  --color-copper-400: #ff6b3d;
+  --color-ink-900: #ece9e2;
+  --color-ink-850: #f3f0ea;
+  --color-ink-800: #faf7f2;
+  --color-ink-700: #e2ded4;
+  --color-ink-600: #d2cdc1;
+  --color-bone-100: #14140f;
+  --color-bone-200: #26261f;
+  --color-bone-300: #3d3d33;
+  --color-bone-400: #55554a;
+  --color-bone-500: #6b6b5f;
+  --color-bone-600: #82826f;
+  --color-bone-700: #9c9c88;
+  --color-brass-400: #b34d00;
+  --color-brass-300: #d06a1f;
+  --color-brass-500: #963f00;
+  --color-copper-400: #b03a2e;
+}
+
+.blueprint body {
+  background-image:
+    linear-gradient(rgba(20, 20, 15, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 20, 15, 0.07) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.blueprint .ascii-robot {
+  color: rgb(20 20 15 / 0.85);
+}
+
+.blueprint .grain::after {
+  display: none;
 }
 
 .blueprint body {
