@@ -2,174 +2,272 @@ import { useEffect, useRef } from "react";
 import { useFinePointer, useReducedMotion } from "../lib/hooks";
 
 /**
- * AsciiMech — a 3D mech rendered entirely as ASCII text.
+ * AsciiWalker — a 3D mech walker rendered entirely as ASCII text.
  *
- * HOW THIS WORKS, and why it looks like the reference rather than like a
- * sprite sheet:
+ * WHY A WALKER AND NOT A BIPED
  *
- * The reference effect is a *real 3D model* whose rendered luminance is mapped
- * to characters. That is exactly what this does, in software:
+ * The earlier version was a humanoid built from ~14 boxes, and it turned out to
+ * be unreadable. Two reasons, both structural rather than cosmetic:
  *
- *   1. The mech is built from boxes -> triangles with flat normals.
- *   2. Each frame: transform, project with a perspective divide, cull back
- *      faces, and rasterise into a z-buffer.
- *   3. Each covered cell stores a shaded luminance.
- *   4. Luminance selects a glyph from a density ramp, so the surface shading
- *      becomes character density — the mid-tones fall out of geometry and
- *      light rather than being painted on.
+ *   1. A humanoid's silhouette collapses when it turns edge-on. The reference
+ *      (an AT-AT) is a wide slab: its outline is nearly the same from every
+ *      angle, so it stays legible while rotating. Silhouette stability across
+ *      the yaw range matters far more than limb articulation.
+ *   2. It span a full 360 degrees of yaw. Anything past about 70 degrees off the
+ *      frontal reads as noise at character resolution.
  *
- * Doing it this way (rather than from rectangles, or with WebGL) is what gives
- * real foreshortening, self-occlusion and a silhouette that changes as the
- * model turns.
+ * So: a four-legged slab hull, a camera *below* the thing looking up (which is
+ * what makes it feel enormous), and yaw oscillating inside a narrow legible
+ * band rather than spinning.
  *
- * Bloom and the wet highlight come from CSS text-shadow rather than per-cell
- * work, which is effectively free.
+ * HOW THE RENDER WORKS
  *
- * PERFORMANCE: rasterisation is O(covered cells). At a 190x66 grid with ~110
- * triangles that is a few thousand cell writes per frame, throttled to ~20fps.
- * The grid is written as a single textContent assignment — one DOM write.
+ * Real 3D geometry, rasterised in software:
+ *
+ *   1. Boxes -> triangles with flat normals, placed through a 3-axis transform.
+ *   2. Per frame: transform, project with a perspective divide, rasterise into a
+ *      z-buffer storing shaded luminance per cell.
+ *   3. Luminance selects a glyph from a density ramp, so shading *is* character
+ *      density — the mid-tones fall out of geometry and light.
+ *
+ * There is no WebGL and no Three.js. Bloom is CSS text-shadow.
  */
 
-const COLS = 168;
-const ROWS = 64;
+const COLS = 120;
+const ROWS = 60;
 
-// Glyphs dim -> bright. Density is the only thing carrying shading, so the
-// ramp has to be perceptually even.
-const RAMP = " .:-=+*#%@";
+/**
+ * Character cells are not square. A monospace glyph is about 0.62em wide and the
+ * line box is 0.78em tall, so one column is ~1.26 rows wider than it is tall.
+ * Projecting one world unit to one column therefore squashes the model
+ * horizontally by a fifth — enough to make a walker look wrong without it being
+ * obvious why. Multiplying screen X by this restores the true proportions.
+ */
+const ASPECT_X = 1.26;
+
+// Glyphs dim -> bright. This ramp has to be perceptually even, because density
+// is the only channel carrying shading.
+const RAMP = " .,:;irsXA253hMHGS#9B&@";
 
 type V3 = [number, number, number];
-type Tri = { a: V3; b: V3; c: V3; n: V3 };
+// `e` marks an emissive surface (the cockpit windows). Emissive geometry has to
+// be flagged at build time — deciding it later from the world-space normal is
+// not possible, because by then the normal has been rotated into view space.
+type Tri = { a: V3; b: V3; c: V3; n: V3; e?: boolean };
 
 /* ------------------------------------------------------------------ *
- * Model
+ * Placement
  * ------------------------------------------------------------------ */
 
-/** Axis-aligned box, emitted as 12 triangles with outward normals. */
-function box(
-  tris: Tri[],
-  cx: number, cy: number, cz: number,
-  sx: number, sy: number, sz: number
-) {
-  const x0 = cx - sx / 2, x1 = cx + sx / 2;
-  const y0 = cy - sy / 2, y1 = cy + sy / 2;
-  const z0 = cz - sz / 2, z1 = cz + sz / 2;
+/**
+ * A rigid transform: rotate by rx, ry, rz (applied Z, then Y, then X) and
+ * translate. Emitting every box through this is what lets the legs articulate
+ * without the caller doing any trigonometry.
+ */
+type Xf = {
+  rx: number; ry: number; rz: number;
+  tx: number; ty: number; tz: number;
+};
 
-  const v = [
-    [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
-    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
-  ] as V3[];
+const IDENT: Xf = { rx: 0, ry: 0, rz: 0, tx: 0, ty: 0, tz: 0 };
 
-  const faces: [number[], V3][] = [
-    [[0, 3, 2], [1, 0, 0]],   // back  -z
-    [[4, 5, 6], [0, 0, 1]],   // front +z
-    [[0, 4, 7], [0, 0, 1]],   // left  -x
-    [[1, 5, 6], [0, 0, 1]],   // right +x
-    [[3, 7, 6], [1, 0, 0]],   // top   +y
-    [[0, 1, 2], [0, -1, 0]],  // bottom
+/** Append a transformed offset to a base translation. */
+function at(xf: Xf, tx: number, ty: number, tz: number): Xf {
+  return { ...xf, tx: xf.tx + tx, ty: xf.ty + ty, tz: xf.tz + tz };
+}
+
+function xform(p: V3, xf: Xf): V3 {
+  let [x, y, z] = p;
+
+  if (xf.rz) {
+    const c = Math.cos(xf.rz), s = Math.sin(xf.rz);
+    const nx = x * c - y * s;
+    y = x * s + y * c;
+    x = nx;
+  }
+  if (xf.ry) {
+    const c = Math.cos(xf.ry), s = Math.sin(xf.ry);
+    const nx = x * c + z * s;
+    z = -x * s + z * c;
+    x = nx;
+  }
+  if (xf.rx) {
+    const c = Math.cos(xf.rx), s = Math.sin(xf.rx);
+    const ny = y * c - z * s;
+    z = y * s + z * c;
+    y = ny;
+  }
+  return [x + xf.tx, y + xf.ty, z + xf.tz];
+}
+
+function xformDir(n: V3, xf: Xf): V3 {
+  return xform(n, { ...xf, tx: 0, ty: 0, tz: 0 });
+}
+
+/**
+ * Emit a box in local space as two triangles per face, with outward normals
+ * taken from the cross product.
+ *
+ * Only the four side faces plus the top are emitted. The bottom face is never
+ * visible from a camera below the model, and skipping it halves the triangle
+ * count for no visual loss.
+ */
+function box(tris: Tri[], xf: Xf, sx: number, sy: number, sz: number, emissive = false) {
+  const x = sx / 2, y = sy / 2, z = sz / 2;
+
+  const local: V3[] = [
+    [-x, -y, -z], [x, -y, -z], [x, y, -z], [-x, y, -z],
+    [-x, -y, z], [x, -y, z], [x, y, z], [-x, y, z],
+  ];
+  const corners = local.map((c) => xform(c, xf));
+
+  // Winding: viewed from outside, counter-clockwise. Correct winding matters
+  // here because the front-face sign is used for lighting contrast — a box
+  // wound backwards is dimmer than it should be.
+  const faces: [number, number, number][] = [
+    [4, 5, 6], [4, 6, 7], // front  +z
+    [1, 0, 3], [1, 3, 2], // back   -z
+    [0, 4, 7], [0, 7, 3], // left   -x
+    [5, 1, 2], [5, 2, 6], // right  +x
+    [3, 7, 6], [3, 6, 2], // top    +y
   ];
 
-  for (const [idx, n] of faces) {
-    // Vertex order matters for the normal. Recompute it from the cross product
-    // rather than trusting the hand-written table.
-    const a = v[idx[0]], b = v[idx[1]], c = v[idx[2]];
+  for (const [i, j, k] of faces) {
+    const a = corners[i], b = corners[j], c = corners[k];
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
     const wx = c[0] - a[0], wy = c[1] - a[1], wz = c[2] - a[2];
     let nx = uy * wz - uz * wy;
     let ny = uz * wx - ux * wz;
     let nz = ux * wy - uy * wx;
-    const len = Math.hypot(nx, ny, nz) || 1;
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-9) continue;
     nx /= len; ny /= len; nz /= len;
-    tris.push({ a, b, c, n: [nx, ny, nz] });
-    void n;
+    tris.push({ a, b, c, n: xformDir([nx, ny, nz], xf), e: emissive });
   }
 }
 
-/** A limb segment: a box pivoting about its top edge. */
-function limb(
-  tris: Tri[],
-  hipX: number, hipY: number, hipZ: number,
-  len: number, thick: number,
-  angle: number, axis: "x" | "z"
-) {
-  const s = Math.sin(angle), c = Math.cos(angle);
-  const rot = (px: number, py: number, pz: number): V3 =>
-    axis === "x"
-      ? [px, py * c - pz * s, py * s + pz * c]
-      : [px * c - pz * s, py, px * s + pz * c];
+/* ------------------------------------------------------------------ *
+ * The walker
+ * ------------------------------------------------------------------ */
 
-  // Half-length segment hanging from the pivot.
-  const d = len / 2;
+/** Hull half-extents, used by both the geometry and the camera framing. */
+const HULL = { x: 1.18, y: 0.5, z: 0.72 };
+const LEG_Y = 1.22;
 
-  // Build the segment in local space then rotate about the pivot.
-  const local: Tri[] = [];
-  box(local, 0, -d, 0, thick, len, thick);
-  for (const t of local) {
-    const ra = rot(0, t.a[1], t.a[2]);
-    const rb = rot(0, t.b[1], t.b[2]);
-    const rc = rot(0, t.c[1], t.c[2]);
-    tris.push({
-      a: [t.a[0] + hipX, ra[1], ra[2]],
-      b: [t.b[0] + hipX, rb[1], rb[2]],
-      c: [t.c[0] + hipX, rc[1], rc[2]],
-      n: axis === "x" ? [t.n[0], t.n[1] * c - t.n[2] * s, t.n[1] * s + t.n[2] * c] : t.n,
-    });
+/**
+ * Four legs, diagonal gait (a trot: front-left with rear-right, and the other
+ * pair opposite). `phase` drives the whole cycle.
+ */
+function buildLeg(tris: Tri[], hipX: number, hipZ: number, swing: number) {
+  const THIGH = 0.66;
+  const SHIN = 0.62;
+
+  // Hip ball.
+  box(tris, at(IDENT, hipX, LEG_Y, hipZ), 0.3, 0.26, 0.3);
+
+  // Thigh swings about the hip on X.
+  const thigh: Xf = { ...IDENT, rx: swing, tx: hipX, ty: LEG_Y, tz: hipZ };
+  box(tris, at(thigh, 0, -THIGH / 2, 0), 0.26, THIGH, 0.28);
+  // Hydraulic actuator alongside the thigh.
+  box(tris, at(thigh, 0.19, -THIGH * 0.4, -0.1), 0.09, THIGH * 0.6, 0.09);
+
+  // Knee.
+  const kneeY = LEG_Y - Math.cos(swing) * THIGH;
+  const kneeZ = hipZ + Math.sin(swing) * THIGH;
+  box(tris, at(IDENT, hipX, kneeY, kneeZ), 0.24, 0.2, 0.26);
+
+  // Shin counter-rotates so the foot plants flat.
+  const shin: Xf = { ...IDENT, rx: -swing * 1.35, tx: hipX, ty: kneeY, tz: kneeZ };
+  box(tris, at(shin, 0, -SHIN / 2, 0), 0.21, SHIN, 0.24);
+  box(tris, at(shin, -0.15, -SHIN * 0.35, 0), 0.07, SHIN * 0.5, 0.08);
+
+  // Ankle joint and the foot itself.
+  const footY = kneeY - Math.cos(-swing * 1.35) * SHIN;
+  const footZ = kneeZ + Math.sin(-swing * 1.35) * SHIN;
+  box(tris, at(IDENT, hipX, footY, footZ), 0.22, 0.14, 0.24);
+  // Three toe pads, so the foot reads as a foot and not a cube.
+  for (const t of [-0.1, 0, 0.1]) {
+    box(tris, at(IDENT, hipX + t * 0.6, footY - 0.09, footZ + 0.16), 0.12, 0.07, 0.16);
   }
 }
 
-/** The mech. Bulky walker proportions — the silhouette has to survive being
-    only ~40 characters wide, so the masses are deliberately heavy. */
-function buildMech(phase: number) {
+function buildWalker(phase: number) {
   const tris: Tri[] = [];
 
-  // Torso: layered hull so it reads as machined rather than a single slab.
-  box(tris, 0, 1.78, 0, 1.34, 0.62, 0.86);      // main hull
-  box(tris, 0, 2.16, -0.08, 1.06, 0.2, 0.62);   // deck
-  box(tris, 0, 1.5, 0.42, 0.86, 0.34, 0.14);     // chest vent
+  /* ---- hull: the dominant mass. Everything else is trim. ---- */
 
-  // Bridge the deck and the cockpit. The deck sits at the back and the cockpit
-  // at the front, so as the model yaws they swing apart and the head reads as
-  // detached. One full-depth block keeps them joined at every angle.
-  box(tris, 0, 2.14, 0.22, 0.8, 0.34, 0.86);
-  box(tris, 0, 2.04, 0.52, 0.62, 0.34, 0.4);
-  // Visor eyes — lit, so they read as the focal point.
-  box(tris, -0.16, 2.05, 0.72, 0.2, 0.12, 0.04);
-  box(tris, 0.16, 2.05, 0.72, 0.2, 0.12, 0.04);
+  // Main slab.
+  box(tris, at(IDENT, 0, LEG_Y + 0.34, 0), HULL.x * 2, HULL.y * 2, HULL.z * 2);
 
-  // Shoulders / pauldrons.
-  box(tris, -0.8, 1.9, 0.04, 0.36, 0.46, 0.6);
-  box(tris, 0.8, 1.9, 0.04, 0.36, 0.46, 0.6);
+  // Belly plate, slightly inset — creates a shadow line under the hull that
+  // separates it from the legs when viewed from below.
+  box(tris, at(IDENT, 0, LEG_Y + 0.06, 0.04), HULL.x * 1.78, 0.14, HULL.z * 1.7);
 
-  // Arm cannons.
-  box(tris, -0.88, 1.42, 0.24, 0.19, 0.62, 0.19);
-  box(tris, 0.88, 1.42, 0.24, 0.19, 0.62, 0.19);
+  // Upper deck.
+  box(tris, at(IDENT, 0, LEG_Y + 0.72, -0.06), HULL.x * 1.5, 0.18, HULL.z * 1.5);
 
-  // Hips.
-  box(tris, 0, 1.36, 0, 0.88, 0.28, 0.56);
+  // Prow: the front of an AT-AT steps forward and down. Angled with rz so the
+  // silhouette has a direction.
+  box(tris, { ...IDENT, rx: -0.34, tx: 0, ty: LEG_Y + 0.42, tz: HULL.z * 0.86 },
+    HULL.x * 1.34, 0.42, 0.5);
+  box(tris, { ...IDENT, rx: -0.5, tx: 0, ty: LEG_Y + 0.2, tz: HULL.z * 1.16 },
+    HULL.x * 1.1, 0.3, 0.34);
 
-  // Legs. Thigh swings, shin counter-swings so the foot plants.
-  const swing = Math.sin(phase) * 0.32;
-  const swing2 = Math.sin(phase + Math.PI) * 0.32;
+  /* ---- cockpit ---- */
 
-  for (const s of [-1, 1]) {
-    const a = s < 0 ? swing : swing2;
-    const hx = s * 0.3;
-    limb(tris, hx, 1.3, 0, 0.6, 0.34, a, "x");
-    const kneeY = 1.3 - Math.cos(a) * 0.6;
-    const kneeZ = Math.sin(a) * 0.6;
-    // Knee joint.
-    box(tris, hx, kneeY, kneeZ, 0.36, 0.2, 0.36);
-    // Shin counter-rotates.
-    const b = -a * 1.5;
-    limb(tris, hx, kneeY, kneeZ, 0.58, 0.28, b, "x");
-    // Foot.
-    box(
-      tris,
-      hx,
-      kneeY - Math.cos(b) * 0.58 - 0.06,
-      kneeZ + Math.sin(b) * 0.58 + 0.08,
-      0.4, 0.14, 0.5
-    );
+  // Neck, then the head. Full depth on the neck so the two never separate.
+  box(tris, at(IDENT, 0, LEG_Y + 0.74, HULL.z * 0.5), 0.66, 0.22, 0.44);
+  box(tris, at(IDENT, 0, LEG_Y + 0.9, HULL.z * 0.66), 0.6, 0.26, 0.36);
+
+  // Three viewport windows — the focal point. Emissive, so they sit at the top
+  // of the ramp regardless of how the key light happens to fall.
+  for (const w of [-0.19, 0, 0.19]) {
+    box(tris, at(IDENT, w, LEG_Y + 0.92, HULL.z * 0.83),
+      w === 0 ? 0.14 : 0.12, 0.1, 0.04, true);
   }
+
+  // Sensor mast. Adds a distinctive spike to the top outline, which is what
+  // makes the silhouette recognisable when it is small.
+  box(tris, at(IDENT, 0, LEG_Y + 1.16, -0.18), 0.08, 0.5, 0.08);
+  box(tris, at(IDENT, 0, LEG_Y + 1.42, -0.18), 0.14, 0.1, 0.14);
+
+  /* ---- armament ---- */
+
+  // Side cannons, angled slightly outward.
+  for (const s of [-1, 1]) {
+    box(tris, { ...IDENT, rz: s * 0.1, tx: s * (HULL.x + 0.22), ty: LEG_Y + 0.5, tz: 0.3 },
+      0.3, 0.3, 0.9);
+    box(tris, { ...IDENT, rz: s * 0.1, tx: s * (HULL.x + 0.22), ty: LEG_Y + 0.5, tz: 0.82 },
+      0.16, 0.16, 0.34);
+  }
+
+  /* ---- hull trim, for surface detail ---- */
+
+  // Ribbed flank plating. Small repeated boxes read as machined panel lines.
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 5; i++) {
+      box(tris, at(IDENT, s * (HULL.x + 0.02), LEG_Y + 0.34, -0.5 + i * 0.25),
+        0.05, 0.5, 0.1);
+    }
+  }
+  // Ventral fins along the belly — very visible from a low camera.
+  for (let i = 0; i < 4; i++) {
+    box(tris, at(IDENT, -0.72 + i * 0.48, LEG_Y + 0.14, -HULL.z * 0.9), 0.3, 0.1, 0.24);
+  }
+  // Dorsal spine blocks.
+  for (let i = 0; i < 3; i++) {
+    box(tris, at(IDENT, 0, LEG_Y + 0.84, -0.5 + i * 0.3), 0.7, 0.1, 0.16);
+  }
+
+  /* ---- legs ---- */
+
+  // Diagonal gait: FL+RR together, FR+RL opposite.
+  const a = Math.sin(phase) * 0.3;
+  const b = Math.sin(phase + Math.PI) * 0.3;
+  buildLeg(tris, -0.72, 0.44, a);   // front left
+  buildLeg(tris, 0.72, 0.44, b);    // front right
+  buildLeg(tris, -0.72, -0.44, b);   // rear left
+  buildLeg(tris, 0.72, -0.44, a);   // rear right
 
   return tris;
 }
@@ -181,7 +279,7 @@ function buildMech(phase: number) {
 const zbuf = new Float32Array(COLS * ROWS);
 const lum = new Float32Array(COLS * ROWS);
 
-export default function AsciiMech() {
+export default function AsciiWalker() {
   const preRef = useRef<HTMLPreElement>(null);
   const finePointer = useFinePointer();
   const reduced = useReducedMotion();
@@ -192,125 +290,122 @@ export default function AsciiMech() {
     if (!pre) return;
 
     const W = COLS, H = ROWS;
-    // Camera framing.
-    // The model spans roughly y = 0.66 (feet) to y = 2.31 (top of the head
-    // bridge), so its vertical centre is about 1.5. Screen Y has to be measured
-    // relative to THAT, not to the world origin — projecting absolute y against
-    // CY pushes the whole mech up past the top of the grid and crops it, which
-    // reads as the head floating free of the body.
-    const CENTER_Y = 1.5;
-    const CAM_Z = 7.2;
-    // inv = FOCAL / CAM_Z. At 4.35 the 1.65-unit-tall model spans ~62 of the
-    // 64 rows, so it fills the frame without cropping.
-    const FOCAL = H * 4.35;
-    const CX = W * 0.5;
-    const CY = H * 0.52;
 
-    // Scratch buffers for the projected vertices, reused every frame.
+    // Model vertical extent: feet reach roughly LEG_Y - 1.4, the mast tip
+    // LEG_Y + 1.47. Framing is measured from the hull, not the origin — see the
+    // note in project rules; projecting absolute y crops the model and makes
+    // the head look detached.
+    // Camera sits below the hull centre and looks up. This is the single
+    // biggest reason the thing reads as enormous.
+    const CAM_Z = 6.0;
+    const ELEV = -0.3;
+
+    /* ---- framing, derived rather than guessed ----
+     *
+     * The walker spans y = FOOT_Y (the bottom of the feet) up to MAST_Y (the tip
+     * of the sensor mast). Deriving FOCAL from those two numbers — instead of
+     * picking a multiple of the row count — means the framing survives a change
+     * to the grid size or to the model's proportions. A hand-tuned multiple was
+     * wrong by 3x and pushed a 2.8-unit model onto a 60-row grid.
+     */
+    const FOOT_Y = LEG_Y - 1.38;
+    const MAST_Y = LEG_Y + 1.47;
+    const MODEL_H = MAST_Y - FOOT_Y;
+    const CENTER_Y = (FOOT_Y + MAST_Y) / 2;
+
+    // Rows per world unit, chosen so the model occupies FILL of the grid height.
+    const FILL = 0.82;
+    const ROWS_PER_UNIT = (H * FILL) / MODEL_H;
+    const FOCAL = ROWS_PER_UNIT * CAM_Z;
+
+    const CX = W * 0.5;
+    const CY = H * 0.5;
+
     const sx = new Float32Array(3);
     const sy = new Float32Array(3);
     const sz = new Float32Array(3);
 
-    // Trails: recent model transforms, drawn faint behind the live model.
-    const TRAIL = 4;
+    const TRAIL = 3;
     const trailYaw: number[] = [];
     const trailPhase: number[] = [];
 
     let raf = 0;
     let last = performance.now();
-    let start = performance.now();
+    const start = performance.now();
     let lastPaint = 0;
-    let yaw = 0.5;
     let phase = 0;
-    let ptrX = 0, ptrY = 0;
-    let ptrSX = 0, ptrSY = 0;
+    let yaw = 0.42;
+    let ptrX = 0, ptrSX = 0;
 
     const onPointer = (e: PointerEvent) => {
       ptrX = (e.clientX / window.innerWidth) * 2 - 1;
-      ptrY = (e.clientY / window.innerHeight) * 2 - 1;
     };
     if (interactive) window.addEventListener("pointermove", onPointer, { passive: true });
 
-    /** Draw one instance of the model into the buffers. */
-    const drawModel = (
-      modelYaw: number,
-      modelPhase: number,
-      dim: number,
-      cxOff: number
-    ) => {
-      const tris = buildMech(modelPhase);
+    const drawWalker = (modelYaw: number, modelPhase: number, dim: number) => {
+      const tris = buildWalker(modelPhase);
       const cy = Math.cos(modelYaw), syw = Math.sin(modelYaw);
-      // Slight downward tilt so we look at it from just below — the
-      // foreshortening is most of what makes it read as a big object.
-      const pitch = 0.2;
-      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const ce = Math.cos(ELEV), se = Math.sin(ELEV);
 
       for (const t of tris) {
-        // Rotate + translate each vertex, then project.
         let ok = true;
         for (let i = 0; i < 3; i++) {
           const v = i === 0 ? t.a : i === 1 ? t.b : t.c;
-          let px = v[0], py = v[1], pz = v[2];
-          // yaw about Y
-          let rx = px * cy + pz * syw;
-          let rz = -px * syw + pz * cy;
-          let ry = py;
-          // pitch about X
-          const ry2 = ry * cp - rz * sp;
-          const rz2 = ry * sp + rz * cp;
-          ry = ry2; rz = rz2;
+          // Yaw about the vertical axis.
+          const rx = v[0] * cy + v[2] * syw;
+          const rz = -v[0] * syw + v[2] * cy;
+          // Then tilt the camera: rotating the world about X by ELEV.
+          const ry = v[1] * ce - rz * se;
+          const rz2 = v[1] * se + rz * ce;
 
-          const zc = CAM_Z - rz;
+          const zc = CAM_Z - rz2;
           if (zc <= 0.2) { ok = false; break; }
           const inv = FOCAL / zc;
-          sx[i] = CX + cxOff + rx * inv;
-          // Centre on the model's mid-height, not the world origin.
+          sx[i] = CX + rx * inv * ASPECT_X;
           sy[i] = CY - (ry - CENTER_Y) * inv;
           sz[i] = zc;
         }
         if (!ok) continue;
 
-        // Signed area, used for the barycentric fill below.
         const area =
           (sx[1] - sx[0]) * (sy[2] - sy[0]) -
           (sy[1] - sy[0]) * (sx[2] - sx[0]);
         if (Math.abs(area) < 1e-6) continue;
-        // No backface culling: the winding of a procedurally generated box is
-        // easy to get backwards, and the z-buffer resolves occlusion correctly
-        // either way. Culling on the wrong sign would drop every visible face.
 
-        // Flat shading: rotate the normal the same way and light it.
-        let nx = t.n[0], ny = t.n[1], nz = t.n[2];
-        let nrx = nx * cy + nz * syw;
-        let nrz = -nx * syw + nz * cy;
-        let nry = ny * cp - nrz * sp;
-        nrz = ny * sp + nrz * cp;
+        // Normal under the same rotation as the geometry.
+        const nx = t.n[0], ny = t.n[1], nz = t.n[2];
+        const nrx = nx * cy + nz * syw;
+        const nrz = -nx * syw + nz * cy;
+        const nry = ny * ce - nrz * se;
+        const nrz2 = ny * se + nrz * ce;
 
-        // Two-sided lighting (abs of the dot product) so the result does not depend
-        // on whether a face's winding happens to point in or out.
-        const key = Math.abs(nrx * -0.45 + nry * 0.72 + nrz * 0.52);
-        const fill = Math.abs(nrx * 0.5 - nry * 0.35 - nrz * 0.6);
-        let L = 0.16 + key * 0.8 + fill * 0.28;
-        // Rim light picks out the silhouette against the black.
-        const rim = Math.pow(1 - Math.min(1, Math.abs(nrz)), 3) * 0.55;
+        // Key light from above-left-front, matching where the eye goes. Two
+        // sided so shading does not depend on winding.
+        const key = Math.abs(nrx * -0.42 + nry * 0.66 + nrz2 * 0.62);
+        const fill = Math.abs(nrx * 0.55 - nry * 0.3 - nrz2 * 0.5);
+        let L = 0.1 + key * 0.82 + fill * 0.3;
+
+        // Rim: faces turned away from camera still get a hot edge, which is
+        // what separates the silhouette from the black background.
+        const rim = Math.pow(1 - Math.min(1, Math.abs(nrz2)), 4) * 0.5;
         L = Math.min(1.35, L + rim);
-        L *= dim;
 
-        // Screen bounds.
+        L *= t.e ? 1.3 : dim;
+
         let minX = Math.max(0, Math.floor(Math.min(sx[0], sx[1], sx[2])));
         let maxX = Math.min(W - 1, Math.ceil(Math.max(sx[0], sx[1], sx[2])));
         let minY = Math.max(0, Math.floor(Math.min(sy[0], sy[1], sy[2])));
         let maxY = Math.min(H - 1, Math.ceil(Math.max(sy[0], sy[1], sy[2])));
         if (minX > maxX || minY > maxY) continue;
 
-        const inv0 = 1 / sz[0], inv1 = 1 / sz[1], inv2 = 1 / sz[2];
+        const i0 = 1 / sz[0], i1 = 1 / sz[1], i2 = 1 / sz[2];
 
         for (let y = minY; y <= maxY; y++) {
           const py = y + 0.5;
           for (let x = minX; x <= maxX; x++) {
             const px = x + 0.5;
-            // Barycentric via edge functions, normalised so the inside test is
-            // independent of the winding direction.
+            // Barycentric, normalised by the signed area so the inside test
+            // works for either winding.
             const w1 =
               (sx[2] - sx[1]) * (py - sy[1]) - (sy[2] - sy[1]) * (px - sx[1]);
             const w2 =
@@ -320,8 +415,7 @@ export default function AsciiMech() {
             const l2 = 1 - l0 - l1;
             if (l0 < 0 || l1 < 0 || l2 < 0) continue;
 
-            // Perspective-correct depth.
-            const z = 1 / (l0 * inv0 + l1 * inv1 + l2 * inv2);
+            const z = 1 / (l0 * i0 + l1 * i1 + l2 * i2);
             const idx = y * W + x;
             if (z <= zbuf[idx]) continue;
             zbuf[idx] = z;
@@ -337,31 +431,31 @@ export default function AsciiMech() {
       zbuf.fill(0);
       lum.fill(0);
 
-      // Trails first, faintest and oldest.
+      // Ghost trail, very faint. Enough to suggest motion smear, not enough
+      // to read as a second object.
       for (let i = 0; i < trailYaw.length; i++) {
         const age = (trailYaw.length - i) / trailYaw.length;
-        drawModel(trailYaw[i], trailPhase[i], 0.16 + age * 0.2, 0);
+        drawWalker(trailYaw[i], trailPhase[i], 0.1 + age * 0.1);
       }
-      // The live model.
-      drawModel(yaw, phase, 1, 0);
+      drawWalker(yaw, phase, 1);
 
-      // Downward motion streaks — reads as the walker moving through dust.
       const buf = new Array<string>(H);
       for (let y = 0; y < H; y++) {
         let row = "";
         for (let x = 0; x < W; x++) {
           const i = y * W + x;
           const L = lum[i];
+
           if (L <= 0.004) {
-            // Sparse vertical rain in the empty field. The hash includes y so
-            // the streaks scatter down the column; without it, a single x
-            // lights up for every row and renders as a hard vertical rule.
-            const h1 = Math.sin(x * 12.9898 + y * 78.233 + Math.floor(t * 6)) * 43758.5453;
-            const s = h1 - Math.floor(h1);
-            const density = 0.002 + (y / H) * 0.006;
-            row += s < density ? "." : " ";
+            // Falling vertical streaks. The hash must include y, otherwise a
+            // single column lights on every row and renders as a hard rule.
+            const h = Math.sin(x * 12.9898 + y * 78.233 + Math.floor(t * 9)) * 43758.5453;
+            const f = h - Math.floor(h);
+            const density = 0.001 + (y / H) * 0.004;
+            row += f < density ? (y > H * 0.55 ? "." : "'") : " ";
             continue;
           }
+
           const g = Math.min(0.999, L) * RAMP.length;
           row += RAMP[g | 0];
         }
@@ -369,7 +463,6 @@ export default function AsciiMech() {
       }
       pre.textContent = buf.join("\n");
 
-      // Record this transform for the trail history.
       trailYaw.push(yaw);
       trailPhase.push(phase);
       if (trailYaw.length > TRAIL) {
@@ -382,19 +475,20 @@ export default function AsciiMech() {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
 
-      if (!reduced) {
-        // Slow turn + walk cycle. Pointer nudges the turn rate.
-        const t = (now - start) / 1000;
-        phase += dt * 2.1;
-        yaw += dt * (0.16 + ptrSX * 0.22);
-        ptrSX += (ptrX - ptrSX) * 0.05;
-        ptrSY += (ptrY - ptrSY) * 0.05;
+      // Advance `last` only when a frame is actually painted. Updating it every
+      // tick pins dt to one display interval, which defeats any frame budget
+      // and silently freezes the scene.
+      ptrSX += (ptrX - ptrSX) * 0.04;
 
-        if (now - lastPaint > 50) {
-          lastPaint = now;
-          paint(now);
-        }
-        void t;
+      phase += dt * 1.9;
+      // Narrow legible yaw band. A full rotation makes a figure this detailed
+      // unreadable; oscillating around a three-quarter view keeps the prow,
+      // cannons and cockpit in frame at all times.
+      yaw = 0.42 + Math.sin(now / 5200) * 0.34 + ptrSX * 0.26;
+
+      if (now - lastPaint > 55) {
+        lastPaint = now;
+        paint(now);
       }
 
       raf = requestAnimationFrame(loop);
@@ -412,7 +506,7 @@ export default function AsciiMech() {
     };
   }, [interactive, reduced]);
 
-  // Scroll framing: the model drifts and scales as you travel the page.
+  // Scroll framing: the walker drifts and scales as you travel the page.
   useEffect(() => {
     const el = preRef.current;
     if (!el || reduced) return;
@@ -423,12 +517,14 @@ export default function AsciiMech() {
       const max = document.documentElement.scrollHeight - window.innerHeight;
       const p = max > 0 ? window.scrollY / max : 0;
       smooth += (p - smooth) * 0.07;
-      const x = Math.sin(smooth * Math.PI * 1.1) * 10;
-      const y = -smooth * 8;
-      const scale = 1 - Math.sin(smooth * Math.PI) * 0.22;
-      const rot = Math.sin(smooth * Math.PI * 1.3) * 1.2;
-      el.style.transform = `translate3d(${x.toFixed(2)}vw, ${y.toFixed(2)}vh, 0) scale(${scale.toFixed(3)}) rotate(${rot.toFixed(2)}deg)`;
-      el.style.opacity = String(1 - Math.sin(smooth * Math.PI) * 0.4);
+      const x = Math.sin(smooth * Math.PI * 1.1) * 9;
+      const y = -smooth * 7;
+      const scale = 1 - Math.sin(smooth * Math.PI) * 0.2;
+      const rot = Math.sin(smooth * Math.PI * 1.3) * 1;
+      el.style.transform =
+        `translate3d(${x.toFixed(2)}vw, ${y.toFixed(2)}vh, 0) ` +
+        `scale(${scale.toFixed(3)}) rotate(${rot.toFixed(2)}deg)`;
+      el.style.opacity = String(1 - Math.sin(smooth * Math.PI) * 0.38);
       raf = requestAnimationFrame(onFrame);
     };
     raf = requestAnimationFrame(onFrame);
@@ -438,17 +534,17 @@ export default function AsciiMech() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 hidden select-none overflow-hidden md:flex md:items-center md:justify-end md:pr-[2vw]"
+      className="pointer-events-none fixed inset-0 z-0 hidden select-none overflow-hidden md:flex md:items-center md:justify-end md:pr-[6vw]"
     >
       <pre
         ref={preRef}
-        className="ascii-mech m-0 whitespace-pre text-center font-mono leading-[0.8] text-bone-100"
-        // The glow is what sells the "lit from within" look in the reference,
-        // and text-shadow does it without any per-cell cost.
+        className="ascii-mech m-0 whitespace-pre text-center font-mono leading-[0.78] text-bone-100"
+        // Bloom from CSS rather than per-cell work — effectively free, and it
+        // is what sells the lit-from-within look.
         style={{
-          fontSize: "clamp(3px, 0.72vw, 11px)",
+          fontSize: "clamp(3px, 0.66vw, 10px)",
           textShadow:
-            "0 0 6px rgba(255,255,255,0.55), 0 0 18px rgba(255,255,255,0.22)",
+            "0 0 5px rgba(255,255,255,0.6), 0 0 16px rgba(255,255,255,0.24), 0 0 40px rgba(255,255,255,0.1)",
         }}
       />
     </div>

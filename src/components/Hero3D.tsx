@@ -298,7 +298,7 @@ export default function Hero() {
       {/* ---- Content ----
           Constrained to the left half on desktop so the ASCII robot owns the
           right without the two colliding. */}
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-6 lg:max-w-[min(100%,33%)]">
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-6 lg:max-w-[min(100%,36%)]">
         <p className="label hero-meta mb-9 flex items-center gap-3">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brass-400" />
           Available for work
@@ -319,8 +319,8 @@ export default function Hero() {
           </span>
         </h1>
 
-        <div className="hero-meta mt-10 max-w-lg">
-          <p className="text-xl leading-relaxed text-bone-400">
+        <div className="hero-meta mt-10 max-w-sm">
+          <p className="text-lg leading-relaxed text-bone-400 lg:text-xl">
             Software engineer. I build web systems that stay fast and stay up
             &mdash; and interfaces that survive a bad connection.
           </p>
