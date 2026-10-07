@@ -1,69 +1,67 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // Admin is the signed-in owner with a VERIFIED email. Checking the address
+    // alone is not enough: an unverified account can be created for any address
+    // by a third party, which would otherwise hand them write access.
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == 'dikhyantsatpathy@gmail.com';
     }
-    
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { 
-      return isSignedIn() && 
-             request.auth.token.email == 'dikhyantsatpathy@gmail.com';
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
-    
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
-    }
-    
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
-    
-    function isValidProfile(data) {
-      return data.keys().hasAll(['name', 'ownerId', 'updatedAt']) &&
-             data.name is string && data.name.size() <= 100 &&
-             data.ownerId is string && data.ownerId.size() <= 128 &&
-             data.ownerId == request.auth.uid;
+
+    // hasOnly, not just hasAll: without it a write can smuggle in arbitrary
+    // extra fields that nothing else validates. Plus size caps, so a single
+    // document cannot be used to store unbounded data.
+    function isValidProfile(d) {
+      return d.keys().hasOnly(['name','subtitle','bio','skills','skillGroups','interests','email','github',
+                               'linkedin','twitter','location','educationInfo','institution','focus','resumeUrl',
+                               'ownerId','updatedAt'])
+          && d.keys().hasAll(['name','ownerId','updatedAt'])
+          && d.name is string && d.name.size() <= 100
+          && (!('subtitle' in d) || (d.subtitle is string && d.subtitle.size() <= 200))
+          && (!('bio' in d) || (d.bio is string && d.bio.size() <= 2000))
+          && (!('skills' in d) || (d.skills is list && d.skills.size() <= 100))
+          && (!('skillGroups' in d) || (d.skillGroups is list && d.skillGroups.size() <= 20))
+          && d.ownerId is string && d.ownerId == request.auth.uid;
     }
-    
-    function isValidSection(data) {
-      return data.keys().hasOnly(['title', 'type', 'items', 'order', 'visible', 'updatedAt', 'ownerId']) &&
-             data.title is string && data.title.size() <= 100 &&
-             data.type is string && data.type.size() <= 50 &&
-             data.items is list && data.items.size() <= 100 &&
-             data.order is number &&
-             data.visible is bool &&
-             data.ownerId is string && data.ownerId.size() <= 128 &&
-             data.ownerId == request.auth.uid;
+
+    // `items` stays a free-form list on purpose: the project, certificate and
+    // achievement fields all live inside it. The list length is still capped.
+    function isValidSection(d) {
+      return d.keys().hasOnly(['title','type','items','order','visible','updatedAt','ownerId'])
+          && d.title is string && d.title.size() <= 100
+          && d.type in ['projects','achievements','certificates','custom']
+          && d.items is list && d.items.size() <= 100
+          && d.order is number && d.visible is bool
+          && d.ownerId is string && d.ownerId == request.auth.uid;
     }
 
     match /profiles/{profileId} {
       allow read: if true;
       allow create: if isAdmin() && isValidId(profileId) && isValidProfile(incoming()) && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(profileId) && isValidProfile(incoming()) && incoming().updatedAt == request.time && incoming().ownerId == existing().ownerId;
+      allow update: if isAdmin() && isValidId(profileId) && isValidProfile(incoming()) && incoming().updatedAt == request.time
+                    && incoming().ownerId == existing().ownerId;
       allow delete: if isAdmin() && isValidId(profileId);
     }
 
     match /sections/{sectionId} {
-      allow list: if resource.data.visible == true || isAdmin();
-      allow get: if resource.data.visible == true || isAdmin();
+      allow get, list: if resource.data.visible == true || isAdmin();
       allow create: if isAdmin() && isValidId(sectionId) && isValidSection(incoming()) && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(sectionId) && isValidSection(incoming()) && incoming().updatedAt == request.time && incoming().ownerId == existing().ownerId;
+      allow update: if isAdmin() && isValidId(sectionId) && isValidSection(incoming()) && incoming().updatedAt == request.time
+                    && incoming().ownerId == existing().ownerId;
       allow delete: if isAdmin();
     }
 
-    match /blocked_ips/{ip} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /visitors/{ip} {
-      allow read: if isAdmin();
-      allow create, update: if true;
-    }
-
-    match /messages/{messageId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
-    }
+    // The removed `messages`, `visitors` and `blocked_ips` collections are
+    // deliberately NOT matched, so they fall through to default-deny. They used
+    // to allow `create: if true` from anyone, which let an anonymous visitor
+    // write unlimited documents.
   }
 }

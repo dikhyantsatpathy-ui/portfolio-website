@@ -26,3 +26,5 @@ Thumbs.db
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+# Read-only reference snapshot supplied with the brief. Not part of the app.
+CHECK/
