@@ -4,8 +4,9 @@
    attribution to commits, PRs, code, docs or the site.
 2. Never invent content (metrics, certifications, employers, skills, outcomes).
    Missing data means hide the section, not write plausible filler.
-3. Read `AGENT_PROMPT.md` before changing anything. Work in its phases; run its
-   verify loop after each phase.
+3. Read `docs/AGENT_PROMPT.md` before changing anything. Work in its phases; run
+   its verify loop after each phase. `docs/PLAN.md` is the shorter companion
+   brief with the same intent.
 4. Keep `prefers-reduced-motion`, `pointer: coarse`, keyboard and screen-reader
    behaviour working.
 5. `npm run lint && npm run build` must pass before every commit.
@@ -21,7 +22,7 @@
 | `src/lib/` | Framework-free logic, unit-testable without React. |
 | `src/data/` | Static content fallback. What crawlers see. |
 | `api/` | Vercel serverless. The only place secrets live. |
-| `CHECK/` | The brief and its supplied source. Read-only reference. |
+| `docs/` | The briefs this work follows. |
 
 ## Two things worth not relearning
 
