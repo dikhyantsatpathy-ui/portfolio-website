@@ -7,6 +7,31 @@ export interface SectionItem {
   link?: string;
   imageUrl?: string;
   date?: string;
+
+  /* projects */
+  slug?: string;
+  tags?: string[];
+  featured?: boolean;
+  repoUrl?: string;
+  liveUrl?: string;
+  role?: string;
+  status?: 'shipped' | 'wip';
+  problem?: string;
+  approach?: string;
+  outcome?: string;
+  gallery?: string[];
+
+  /* certificates / achievements */
+  issuer?: string;
+  credentialId?: string;
+  credentialUrl?: string;
+  expires?: string;
+}
+
+export interface SkillGroup {
+  id: string;
+  label: string;
+  items: string[];
 }
 
 export interface Section {
@@ -33,6 +58,8 @@ export interface Profile {
   subtitle: string;
   bio: string;
   skills: string[];
+  /** Grouped skills. Falls back to a single group built from `skills`. */
+  skillGroups?: SkillGroup[];
   interests?: Interest[];
   email: string;
   github: string;
@@ -41,6 +68,9 @@ export interface Profile {
   location: string;
   educationInfo?: string;
   institution?: string;
+  /** One line about what the work centres on. Replaces a hard-coded string. */
+  focus?: string;
+  resumeUrl?: string;
   ownerId: string;
   updatedAt: string;
 }

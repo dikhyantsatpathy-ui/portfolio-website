@@ -1,0 +1,27 @@
+#!/bin/sh
+# Strip AI attribution trailers from a commit message.
+#
+# Why not `sed -i.bak`: sed creates its temp file in the CURRENT directory, so
+# when the message lives on a different volume the rename fails with
+# "Invalid cross-device link" and the message is left truncated or empty. The
+# temp file here is created next to the message instead, so the rename is
+# always same-filesystem.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+msg="$1"
+[ -f "$msg" ] || exit 0
+
+tmp="$msg.attribution-filter"
+grep -v -E \
+  '^[Cc]o-[Aa]uthored-[Bb]y:.*([Cc]laude|[Aa]nthropic)' "$msg" \
+  > "$tmp" || true
+grep -v -E \
+  '^Generated with.*[Cc]laude' "$tmp" > "$tmp.2" || true
+
+# Drop trailing blank lines left behind by the removals.
+awk 'BEGIN{n=0} {lines[n++]=$0} END{last=n-1; while(last>=0 && lines[last] ~ /^[[:space:]]*$/) last--; for(i=0;i<=last;i++) print lines[i]}' \
+  "$tmp.2" > "$msg"
+
+rm -f "$tmp" "$tmp.2"
+exit 0
